@@ -1,9 +1,12 @@
 # karuta
-A karuta music player
+
+A karuta music player 
 =======
 # 歌牌点歌系统（Karuta Jukebox）
 
 一个Android+Windows双端的歌牌点歌程序，结合卡牌游戏机制。
+
+### 本项目大部分内容使用Vibe Coding
 
 ## 📋 功能概述
 
