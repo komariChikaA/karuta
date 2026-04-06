@@ -27,7 +27,7 @@ public class MainWindow extends Application {
     @Override
     public void start(Stage stage) {
         primaryStage = stage;
-        primaryStage.setTitle("点歌对战");
+        primaryStage.setTitle("歌牌对战");
         primaryStage.setWidth(1200);
         primaryStage.setHeight(800);
 
