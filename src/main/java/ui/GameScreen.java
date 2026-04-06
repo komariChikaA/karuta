@@ -3,15 +3,18 @@ package ui;
 import game.GameEngine;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -28,6 +31,7 @@ import java.util.stream.Collectors;
 public class GameScreen {
     private final MainWindow mainWindow;
     private final GameEngine gameEngine;
+
     private Deck currentDeck;
     private Scene scene;
 
@@ -45,6 +49,7 @@ public class GameScreen {
     private Button successButton;
     private Button failureButton;
     private Button prepareButton;
+    private FlowPane centerPane;
 
     public GameScreen(MainWindow mainWindow, GameEngine gameEngine) {
         this.mainWindow = mainWindow;
@@ -67,10 +72,12 @@ public class GameScreen {
         );
 
         root.setTop(createTopBar());
-        root.setCenter(createCenterArea());
+        root.setCenter(createResponsiveCenter());
         root.setBottom(createButtonBar());
 
         scene = new Scene(root, 1280, 820);
+        scene.widthProperty().addListener((obs, oldValue, newValue) -> updateCenterLayout(newValue.doubleValue()));
+        updateCenterLayout(1280);
     }
 
     private HBox createTopBar() {
@@ -102,27 +109,38 @@ public class GameScreen {
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-
         topBar.getChildren().addAll(titleBlock, spacer, statsCard);
         return topBar;
     }
 
-    private HBox createCenterArea() {
-        HBox centerArea = new HBox(24);
-        centerArea.setPadding(new Insets(0, 28, 24, 28));
+    private ScrollPane createResponsiveCenter() {
+        centerPane = new FlowPane(Orientation.HORIZONTAL, 24, 24);
+        centerPane.setPadding(new Insets(0, 28, 24, 28));
 
+        centerPane.getChildren().addAll(createArtworkPanel(), createRoundInfoPanel(), createQueuePanel());
+
+        ScrollPane scrollPane = new ScrollPane(centerPane);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background-color: transparent;");
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        return scrollPane;
+    }
+
+    private VBox createArtworkPanel() {
         VBox artworkPanel = new VBox(16);
         artworkPanel.setAlignment(Pos.TOP_CENTER);
         artworkPanel.setPadding(new Insets(24));
-        artworkPanel.setPrefWidth(470);
+        artworkPanel.setPrefWidth(420);
+        artworkPanel.setMinWidth(320);
         artworkPanel.setStyle(createPanelStyle("#fffaf3"));
 
-        Label artworkHeader = new Label("Card Artwork");
+        Label artworkHeader = new Label("Artwork");
         artworkHeader.setStyle("-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: #7a5c2e;");
 
         StackPane imageFrame = new StackPane();
         imageFrame.setPadding(new Insets(18));
-        imageFrame.setMinHeight(520);
+        imageFrame.setMinHeight(440);
         imageFrame.setStyle(
             "-fx-background-color: linear-gradient(to bottom, #ffffff, #f7efe4);" +
             "-fx-background-radius: 28;" +
@@ -131,14 +149,13 @@ public class GameScreen {
         );
 
         cardImageView = new ImageView();
-        cardImageView.setFitWidth(360);
-        cardImageView.setFitHeight(460);
+        cardImageView.setFitWidth(320);
+        cardImageView.setFitHeight(420);
         cardImageView.setPreserveRatio(true);
         cardImageView.setSmooth(true);
 
         imagePlaceholderLabel = new Label("Artwork preview area");
         imagePlaceholderLabel.setStyle("-fx-font-size: 16; -fx-text-fill: #8b93a3;");
-
         imageFrame.getChildren().addAll(cardImageView, imagePlaceholderLabel);
 
         cardNameLabel = new Label("Ready");
@@ -146,36 +163,40 @@ public class GameScreen {
         cardNameLabel.setAlignment(Pos.CENTER);
         cardNameLabel.setStyle("-fx-font-size: 28; -fx-font-weight: bold; -fx-text-fill: #1d2a44;");
 
-        Label artworkHint = new Label("This panel leaves room for larger art, title badges, and extra card metadata.");
+        Label artworkHint = new Label("Main visual area for the current card.");
         artworkHint.setWrapText(true);
         artworkHint.setAlignment(Pos.CENTER);
         artworkHint.setStyle("-fx-font-size: 12; -fx-text-fill: #7a8598;");
 
         artworkPanel.getChildren().addAll(artworkHeader, imageFrame, cardNameLabel, artworkHint);
+        return artworkPanel;
+    }
 
+    private VBox createRoundInfoPanel() {
         VBox infoPanel = new VBox(18);
         infoPanel.setPadding(new Insets(24));
+        infoPanel.setPrefWidth(420);
+        infoPanel.setMinWidth(320);
         infoPanel.setStyle(createPanelStyle("#f8fbff"));
-        HBox.setHgrow(infoPanel, Priority.ALWAYS);
 
-        Label infoHeader = new Label("Now Playing");
+        Label infoHeader = new Label("Round Status");
         infoHeader.setStyle("-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: #4a6589;");
 
-        VBox songCard = new VBox(10);
-        songCard.setPadding(new Insets(20));
-        songCard.setStyle(createGlassCardStyle());
+        VBox stateCard = new VBox(12);
+        stateCard.setPadding(new Insets(20));
+        stateCard.setStyle(createGlassCardStyle());
 
-        songTitleLabel = new Label("Song info pending");
+        statusLabel = new Label("Press Prepare to start.");
+        statusLabel.setWrapText(true);
+        statusLabel.setStyle("-fx-font-size: 20; -fx-font-weight: bold; -fx-text-fill: #24324a;");
+
+        songTitleLabel = new Label("Waiting");
         songTitleLabel.setWrapText(true);
-        songTitleLabel.setStyle("-fx-font-size: 30; -fx-font-weight: bold; -fx-text-fill: #24324a;");
+        songTitleLabel.setStyle("-fx-font-size: 24; -fx-font-weight: bold; -fx-text-fill: #24324a;");
 
-        songMetaLabel = new Label("Song title, file format, and extra info can be shown here.");
+        songMetaLabel = new Label("Selected card and song information will appear here.");
         songMetaLabel.setWrapText(true);
         songMetaLabel.setStyle("-fx-font-size: 14; -fx-text-fill: #6d7686;");
-
-        statusLabel = new Label("Select a card and the audio clip will start automatically.");
-        statusLabel.setWrapText(true);
-        statusLabel.setStyle("-fx-font-size: 15; -fx-text-fill: #4f5f79;");
 
         playbackProgressBar = new ProgressBar(0);
         playbackProgressBar.setPrefWidth(Double.MAX_VALUE);
@@ -185,25 +206,55 @@ public class GameScreen {
             "-fx-background-radius: 999;"
         );
 
-        songCard.getChildren().addAll(songTitleLabel, songMetaLabel, statusLabel, playbackProgressBar);
+        stateCard.getChildren().addAll(statusLabel, songTitleLabel, songMetaLabel, playbackProgressBar);
 
-        VBox cardDetailCard = new VBox(10);
-        cardDetailCard.setPadding(new Insets(20));
-        cardDetailCard.setStyle(createGlassCardStyle());
+        VBox helperCard = new VBox(10);
+        helperCard.setPadding(new Insets(20));
+        helperCard.setStyle(createGlassCardStyle());
 
-        Label cardDetailTitle = new Label("Current Card Space");
-        cardDetailTitle.setStyle("-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #24324a;");
+        Label helperTitle = new Label("Flow");
+        helperTitle.setStyle("-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #24324a;");
 
-        Label cardDetailHint = new Label("The layout now keeps separate space for art, work name, song title, and future metadata.");
-        cardDetailHint.setWrapText(true);
-        cardDetailHint.setStyle("-fx-font-size: 13; -fx-text-fill: #6d7686;");
+        Label helperText = new Label("Prepare starts a round. Success or Failure moves into rest. Prepare Next continues.");
+        helperText.setWrapText(true);
+        helperText.setStyle("-fx-font-size: 13; -fx-text-fill: #6d7686;");
+        helperCard.getChildren().addAll(helperTitle, helperText);
 
-        cardDetailCard.getChildren().addAll(cardDetailTitle, cardDetailHint);
+        infoPanel.getChildren().addAll(infoHeader, stateCard, helperCard);
+        return infoPanel;
+    }
 
-        infoPanel.getChildren().addAll(infoHeader, songCard, cardDetailCard);
+    private VBox createQueuePanel() {
+        VBox queuePanel = new VBox(18);
+        queuePanel.setPadding(new Insets(24));
+        queuePanel.setPrefWidth(320);
+        queuePanel.setMinWidth(280);
+        queuePanel.setStyle(createPanelStyle("#f7fbf5"));
 
-        centerArea.getChildren().addAll(artworkPanel, infoPanel);
-        return centerArea;
+        Label queueHeader = new Label("Card Pool");
+        queueHeader.setStyle("-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: #3c6f4d;");
+
+        VBox activeCard = new VBox(10);
+        activeCard.setPadding(new Insets(20));
+        activeCard.setStyle(createGlassCardStyle());
+
+        Label activeTitle = new Label("Current Songs");
+        activeTitle.setStyle("-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #24324a;");
+
+        Label activeText = new Label("Songs linked to the current card will be shown here.");
+        activeText.setWrapText(true);
+        activeText.setStyle("-fx-font-size: 13; -fx-text-fill: #6d7686;");
+
+        activeCard.getChildren().addAll(activeTitle, activeText);
+        queuePanel.getChildren().addAll(queueHeader, activeCard);
+        return queuePanel;
+    }
+
+    private void updateCenterLayout(double width) {
+        if (centerPane == null) {
+            return;
+        }
+        centerPane.setPrefWrapLength(Math.max(680, width - 120));
     }
 
     private VBox createButtonBar() {
@@ -220,12 +271,11 @@ public class GameScreen {
         failureButton.setDisable(true);
         roundButtonsBox.getChildren().addAll(successButton, failureButton);
 
-        prepareButton = createButton("Continue", "#3d6cb5", e -> resumeFromRest());
-        prepareButton.setDisable(true);
-        prepareButton.setVisible(false);
+        prepareButton = createButton("Prepare", "#3d6cb5", e -> resumeFromRest());
+        prepareButton.setDisable(false);
+        prepareButton.setVisible(true);
 
         Button returnButton = createButton("Back to Menu", "#6f7480", e -> returnToMenu());
-
         buttonBar.getChildren().addAll(roundButtonsBox, prepareButton, returnButton);
         return buttonBar;
     }
@@ -249,6 +299,21 @@ public class GameScreen {
     private void setupGameEngine() {
         gameEngine.setGameListener(new GameEngine.GameListener() {
             @Override
+            public void onAwaitingStart() {
+                Platform.runLater(() -> {
+                    statusLabel.setText("Press Prepare to start the game.");
+                    songTitleLabel.setText("Waiting to start");
+                    songMetaLabel.setText("The selected cards are ready. Start when everyone is prepared.");
+                    prepareButton.setText("Prepare");
+                    prepareButton.setDisable(false);
+                    successButton.setDisable(true);
+                    failureButton.setDisable(true);
+                    playbackProgressBar.setProgress(0);
+                    refreshDeckSummary();
+                });
+            }
+
+            @Override
             public void onRoundStart(Card card) {
                 Platform.runLater(() -> {
                     cardNameLabel.setText(card.getWorkName());
@@ -257,7 +322,7 @@ public class GameScreen {
                     statusLabel.setText("Card selected. Waiting for playback.");
                     updateCardImage(card);
                     prepareButton.setDisable(true);
-                    prepareButton.setVisible(false);
+                    prepareButton.setText("Prepare Next");
                     successButton.setDisable(true);
                     failureButton.setDisable(true);
                     playbackProgressBar.setProgress(0);
@@ -271,16 +336,16 @@ public class GameScreen {
                     songTitleLabel.setText(song.getDisplayName());
                     songMetaLabel.setText(String.format("Format %s | File %s",
                         song.getFileFormat().toUpperCase(), song.getFileName()));
-                    statusLabel.setText("Clip is playing. Use the art and title area as the main focus.");
-                    successButton.setDisable(true);
-                    failureButton.setDisable(true);
+                    statusLabel.setText("Playback is active. You can end this round at any time.");
+                    successButton.setDisable(false);
+                    failureButton.setDisable(false);
                 });
             }
 
             @Override
             public void onMusicComplete() {
                 Platform.runLater(() -> {
-                    statusLabel.setText("Playback finished. Choose the round result.");
+                    statusLabel.setText("Playback finished. Choose Success or Failure.");
                     successButton.setDisable(false);
                     failureButton.setDisable(false);
                     playbackProgressBar.setProgress(1.0);
@@ -300,17 +365,22 @@ public class GameScreen {
                         state.getCurrentRound(), state.getTotalRounds()));
                     updateStats(state);
                     refreshDeckSummary();
+                    prepareButton.setDisable(false);
+                    prepareButton.setText("Prepare Next");
+                    statusLabel.setText("Round complete. Press Prepare Next to continue.");
+                    successButton.setDisable(true);
+                    failureButton.setDisable(true);
                 });
             }
 
             @Override
             public void onRestMusicStart() {
                 Platform.runLater(() -> {
-                    statusLabel.setText("Rest music is active. Continue when the table is ready.");
+                    statusLabel.setText("Rest time. Break music will play if enabled.");
                     songTitleLabel.setText("Rest Time");
-                    songMetaLabel.setText("Break track is playing.");
+                    songMetaLabel.setText("Press Prepare Next when the table is ready.");
                     prepareButton.setDisable(false);
-                    prepareButton.setVisible(true);
+                    prepareButton.setText("Prepare Next");
                 });
             }
 
@@ -342,7 +412,7 @@ public class GameScreen {
     }
 
     private void resumeFromRest() {
-        gameEngine.resumeFromRest();
+        gameEngine.prepareNextRound();
     }
 
     private void updateCardImage(Card card) {
@@ -353,24 +423,20 @@ public class GameScreen {
         }
 
         try (FileInputStream inputStream = new FileInputStream(card.getImageFile())) {
-            Image image = new Image(inputStream);
-            cardImageView.setImage(image);
+            cardImageView.setImage(new Image(inputStream));
             imagePlaceholderLabel.setVisible(false);
         } catch (Exception e) {
             cardImageView.setImage(null);
             imagePlaceholderLabel.setVisible(true);
-            System.err.println("Unable to load image: " + e.getMessage());
         }
     }
 
     private void updateStats(GameState state) {
-        int successCount = state.getSuccessCount();
-        int failureCount = state.getFailureCount();
-        double successRate = state.getSuccessRate();
-
         statsLabel.setText(String.format(
             "Success %d | Failure %d | Rate %.1f%%",
-            successCount, failureCount, successRate
+            state.getSuccessCount(),
+            state.getFailureCount(),
+            state.getSuccessRate()
         ));
     }
 
@@ -383,7 +449,7 @@ public class GameScreen {
             return;
         }
 
-        deckInfoLabel.setText(String.format("%s  |  Total cards %d", deck.getDeckName(), deck.getCardCount()));
+        deckInfoLabel.setText(String.format("%s  |  Card pool up to %d", deck.getDeckName(), deck.getCardCount()));
         queueLabel.setText(String.format("Active cards %d | Inactive cards %d",
             deck.getActiveCardCount(), deck.getInactiveCards().size()));
     }
@@ -392,7 +458,6 @@ public class GameScreen {
         if (card == null || card.getSongs().isEmpty()) {
             return "No playable songs linked to this card.";
         }
-
         return card.getSongs().stream()
             .limit(4)
             .map(Song::getDisplayName)
@@ -402,19 +467,13 @@ public class GameScreen {
     private void showGameOverDialog(GameState state) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("Game Over");
-
-        int successCount = state.getSuccessCount();
-        int totalCount = state.getCurrentRound();
-
         alert.setContentText(String.format(
-            "Game finished%n%n" +
-            "Rounds: %d%n" +
-            "Success: %d%n" +
-            "Failure: %d%n" +
-            "Rate: %.1f%%",
-            totalCount, successCount, totalCount - successCount, state.getSuccessRate()
+            "Game finished%n%nRounds: %d%nSuccess: %d%nFailure: %d%nRate: %.1f%%",
+            state.getCurrentRound(),
+            state.getSuccessCount(),
+            state.getFailureCount(),
+            state.getSuccessRate()
         ));
-
         alert.showAndWait();
         returnToMenu();
     }

@@ -11,7 +11,9 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class ConfigManager {
@@ -37,11 +39,19 @@ public class ConfigManager {
 
     private File resolveBaseDir(String requestedBaseDir) throws IOException {
         File directPath = new File(requestedBaseDir);
-        if (directPath.isDirectory()) {
+        if (containsConfigFile(directPath)) {
             return directPath.getCanonicalFile();
         }
 
         File sourceResourcesPath = new File("src/main/resources", requestedBaseDir);
+        if (containsConfigFile(sourceResourcesPath)) {
+            return sourceResourcesPath.getCanonicalFile();
+        }
+
+        if (directPath.isDirectory()) {
+            return directPath.getCanonicalFile();
+        }
+
         if (sourceResourcesPath.isDirectory()) {
             return sourceResourcesPath.getCanonicalFile();
         }
@@ -56,6 +66,10 @@ public class ConfigManager {
         }
 
         throw new FileNotFoundException("Config directory not found: " + requestedBaseDir);
+    }
+
+    private boolean containsConfigFile(File directory) {
+        return directory.isDirectory() && new File(directory, CONFIG_FILE).isFile();
     }
 
     private void loadConfigFile() throws IOException {
@@ -147,16 +161,16 @@ public class ConfigManager {
     }
 
     private void parseDeckLine(String line, Deck deck) {
-        String[] parts = line.split(",", -1);
-        if (parts.length < 3) {
+        List<String> parts = parseCsvLine(line);
+        if (parts.size() < 3) {
             System.err.println("Invalid deck row: " + line);
             return;
         }
 
-        String imageName = parts[0].trim();
-        String workName = parts[1].trim();
-        String songsList = parts[2].trim();
-        String songDisplayNames = parts.length >= 4 ? parts[3].trim() : "";
+        String imageName = parts.get(0).trim();
+        String workName = parts.get(1).trim();
+        String songsList = parts.get(2).trim();
+        String songDisplayNames = parts.size() >= 4 ? parts.get(3).trim() : "";
 
         Card card = new Card(imageName, workName);
 
@@ -190,13 +204,44 @@ public class ConfigManager {
         }
     }
 
+    private List<String> parseCsvLine(String line) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+
+        for (int i = 0; i < line.length(); i++) {
+            char currentChar = line.charAt(i);
+
+            if (currentChar == '"') {
+                if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    current.append('"');
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+                continue;
+            }
+
+            if (currentChar == ',' && !inQuotes) {
+                parts.add(current.toString());
+                current.setLength(0);
+                continue;
+            }
+
+            current.append(currentChar);
+        }
+
+        parts.add(current.toString());
+        return parts;
+    }
+
     public boolean isSupportedAudioFormat(String fileName) {
         String format = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
-        return format.matches("mp3|wav|flac|ogg|aac");
+        return format.matches("mp3|wav|m4a|aif|aiff");
     }
 
     public String[] getSupportedFormats() {
-        return new String[]{"mp3", "wav", "flac", "ogg", "aac"};
+        return new String[]{"mp3", "wav", "m4a", "aif", "aiff"};
     }
 
     public String getMusicFolder() {

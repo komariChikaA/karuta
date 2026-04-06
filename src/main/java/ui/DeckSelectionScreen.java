@@ -1,11 +1,14 @@
 package ui;
 
 import config.ConfigManager;
+import game.GameRules;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Separator;
@@ -35,7 +38,9 @@ public class DeckSelectionScreen {
 
     private Scene scene;
     private ListView<String> deckListView;
-    private Spinner<Integer> roundsSpinner;
+    private Spinner<Integer> cardsSpinner;
+    private CheckBox restMusicCheckBox;
+    private ComboBox<GameRules.FailureMode> failureModeComboBox;
     private Label deckNameLabel;
     private Label deckMetaLabel;
     private Label previewTitleLabel;
@@ -85,6 +90,17 @@ public class DeckSelectionScreen {
         deckHintLabel.setWrapText(true);
         deckHintLabel.setStyle("-fx-font-size: 13; -fx-text-fill: #7a8598;");
 
+        Button importButton = new Button("导入数据集");
+        importButton.setStyle(createSecondaryButtonStyle());
+        importButton.setOnAction(e -> openImportDialog());
+
+        Button refreshButton = new Button("刷新列表");
+        refreshButton.setStyle(createSecondaryButtonStyle());
+        refreshButton.setOnAction(e -> refreshDeckList(getSelectedDeckName()));
+
+        HBox deckActionBar = new HBox(12, importButton, refreshButton);
+        deckActionBar.setAlignment(Pos.CENTER_LEFT);
+
         deckListView = new ListView<>();
         deckListView.setPrefHeight(320);
         deckListView.setStyle(
@@ -108,16 +124,28 @@ public class DeckSelectionScreen {
         Label roundsLabel = new Label("Match Setup");
         roundsLabel.setStyle("-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #24324a;");
 
-        Label roundsHintLabel = new Label("Pick how many rounds this session should run.");
+        Label roundsHintLabel = new Label("Pick how many cards from this dataset should be used in this session.");
         roundsHintLabel.setWrapText(true);
         roundsHintLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #7a8598;");
 
-        roundsSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 100, 10));
-        roundsSpinner.setStyle("-fx-font-size: 14;");
-        roundsSpinner.setPrefWidth(160);
+        cardsSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 100, 10));
+        cardsSpinner.setStyle("-fx-font-size: 14;");
+        cardsSpinner.setPrefWidth(160);
 
-        HBox roundsBox = new HBox(12, new Label("Rounds"), roundsSpinner);
+        HBox roundsBox = new HBox(12, new Label("Cards"), cardsSpinner);
         roundsBox.setAlignment(Pos.CENTER_LEFT);
+
+        restMusicCheckBox = new CheckBox("Play break music during rest");
+        restMusicCheckBox.setSelected(true);
+        restMusicCheckBox.setStyle("-fx-font-size: 13; -fx-text-fill: #31415f;");
+
+        failureModeComboBox = new ComboBox<>();
+        failureModeComboBox.setItems(FXCollections.observableArrayList(GameRules.FailureMode.PASS, GameRules.FailureMode.SKIP));
+        failureModeComboBox.setValue(mainWindow.getGameRules().getFailureMode());
+        failureModeComboBox.setPrefWidth(180);
+
+        HBox failureModeBox = new HBox(12, new Label("On Failure"), failureModeComboBox);
+        failureModeBox.setAlignment(Pos.CENTER_LEFT);
 
         Button startButton = createButton("Start", "#2f7d4a");
         startButton.setOnAction(e -> startGame());
@@ -129,8 +157,8 @@ public class DeckSelectionScreen {
         HBox buttonBox = new HBox(15, startButton, exitButton);
         buttonBox.setAlignment(Pos.CENTER_LEFT);
 
-        roundsCard.getChildren().addAll(roundsLabel, roundsHintLabel, roundsBox, buttonBox);
-        leftPanel.getChildren().addAll(deckLabel, deckHintLabel, deckListView, roundsCard);
+        roundsCard.getChildren().addAll(roundsLabel, roundsHintLabel, roundsBox, failureModeBox, restMusicCheckBox, buttonBox);
+        leftPanel.getChildren().addAll(deckLabel, deckHintLabel, deckActionBar, deckListView, roundsCard);
 
         VBox rightPanel = new VBox(18);
         rightPanel.setPadding(new Insets(26));
@@ -215,10 +243,14 @@ public class DeckSelectionScreen {
     }
 
     private void loadAvailableDecks() {
+        deckFiles.clear();
+        deckListView.getItems().clear();
+
         File decksFolder = new File(configManager.getDefaultDeck()).getParentFile();
         if (decksFolder != null && decksFolder.exists() && decksFolder.isDirectory()) {
             File[] files = decksFolder.listFiles((dir, name) -> name.endsWith(".csv"));
             if (files != null) {
+                java.util.Arrays.sort(files, java.util.Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
                 for (File file : files) {
                     deckFiles.add(file);
                     deckListView.getItems().add(file.getName().replace(".csv", ""));
@@ -230,8 +262,51 @@ public class DeckSelectionScreen {
             deckListView.getItems().add("No deck files found");
             deckListView.setDisable(true);
         } else {
+            deckListView.setDisable(false);
             deckListView.getSelectionModel().selectFirst();
         }
+    }
+
+    private void refreshDeckList(String preferredDeckName) {
+        loadAvailableDecks();
+        if (deckFiles.isEmpty()) {
+            updateDeckPreview(-1);
+            return;
+        }
+
+        int indexToSelect = 0;
+        if (preferredDeckName != null && !preferredDeckName.isBlank()) {
+            for (int i = 0; i < deckFiles.size(); i++) {
+                String deckName = deckFiles.get(i).getName().replace(".csv", "");
+                if (deckName.equals(preferredDeckName)) {
+                    indexToSelect = i;
+                    break;
+                }
+            }
+        }
+
+        deckListView.getSelectionModel().select(indexToSelect);
+        updateDeckPreview(indexToSelect);
+    }
+
+    private void openImportDialog() {
+        String selectedDeckName = getSelectedDeckName();
+        DatasetImportDialog dialog = new DatasetImportDialog(
+            scene.getWindow() instanceof javafx.stage.Stage stage ? stage : null,
+            configManager,
+            selectedDeckName,
+            this::refreshDeckList
+        );
+        dialog.showAndWait();
+        refreshDeckList(selectedDeckName);
+    }
+
+    private String getSelectedDeckName() {
+        int selectedIndex = deckListView.getSelectionModel().getSelectedIndex();
+        if (selectedIndex < 0 || selectedIndex >= deckFiles.size()) {
+            return null;
+        }
+        return deckFiles.get(selectedIndex).getName().replace(".csv", "");
     }
 
     private void updateDeckPreview(int selectedIndex) {
@@ -251,6 +326,7 @@ public class DeckSelectionScreen {
             int totalSongs = deck.getCards().stream().mapToInt(Card::getSongCount).sum();
             deckNameLabel.setText(deck.getDeckName());
             deckMetaLabel.setText(String.format("Cards %d | Songs %d", deck.getCardCount(), totalSongs));
+            cardsSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, Math.max(1, deck.getCardCount()), Math.min(10, Math.max(1, deck.getCardCount()))));
 
             Card heroCard = deck.getCards().isEmpty() ? null : deck.getCards().get(0);
             if (heroCard != null) {
@@ -326,7 +402,28 @@ public class DeckSelectionScreen {
         try {
             File selectedDeckFile = deckFiles.get(selectedIndex);
             Deck deck = configManager.loadDeck(selectedDeckFile.getAbsolutePath());
-            mainWindow.startGame(deck, roundsSpinner.getValue());
+            int selectedCardCount = cardsSpinner.getValue();
+            CardSelectionDialog cardSelectionDialog = new CardSelectionDialog(
+                scene.getWindow() instanceof javafx.stage.Stage stage ? stage : null,
+                deck,
+                selectedCardCount
+            );
+            CardSelectionDialog.SelectionResult selectionResult = cardSelectionDialog.showAndWait();
+            if (selectionResult.selectedCards().isEmpty()) {
+                return;
+            }
+
+            Deck limitedDeck = deck.createDeckFromCards(selectionResult.selectedCards());
+            List<Song> restSongs = selectionResult.unselectedCards().stream()
+                .flatMap(card -> card.getSongs().stream())
+                .toList();
+            mainWindow.startGame(
+                limitedDeck,
+                limitedDeck.getCardCount(),
+                restMusicCheckBox.isSelected(),
+                failureModeComboBox.getValue(),
+                restSongs
+            );
         } catch (Exception e) {
             mainWindow.showErrorDialog("Failed to load deck", e.getMessage());
         }

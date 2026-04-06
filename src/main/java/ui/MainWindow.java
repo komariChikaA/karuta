@@ -9,8 +9,10 @@ import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.stage.Stage;
 import model.Deck;
+import model.Song;
 
 import java.io.IOException;
+import java.util.List;
 
 public class MainWindow extends Application {
     private Stage primaryStage;
@@ -47,8 +49,17 @@ public class MainWindow extends Application {
         primaryStage.setScene(scene);
     }
 
-    public void startGame(Deck selectedDeck, int totalRounds) {
+    public void startGame(
+        Deck selectedDeck,
+        int totalRounds,
+        boolean enableRestMusic,
+        GameRules.FailureMode failureMode,
+        List<Song> restMusicPool
+    ) {
         try {
+            gameRules.setRestMusicEnabled(enableRestMusic);
+            gameRules.setFailureMode(failureMode);
+            gameRules.setRestMusicPool(restMusicPool);
             gameScreen = new GameScreen(this, gameEngine);
             gameScreen.initialize(selectedDeck, totalRounds);
             primaryStage.setScene(gameScreen.getScene());
@@ -97,6 +108,10 @@ public class MainWindow extends Application {
 
     public GameEngine getGameEngine() {
         return gameEngine;
+    }
+
+    public GameRules getGameRules() {
+        return gameRules;
     }
 
     @Override

@@ -22,12 +22,14 @@ import model.Card;
 import model.Deck;
 import model.GameState;
 
+import java.util.List;
+
 public class AdminPanel {
     private final GameEngine gameEngine;
 
     private Stage stage;
-    private ListView<String> activeCardsView;
-    private ListView<String> inactiveCardsView;
+    private ListView<Card> activeCardsView;
+    private ListView<Card> inactiveCardsView;
     private TextArea infoArea;
     private Label statusLabel;
     private boolean autoUpdateStarted;
@@ -88,7 +90,7 @@ public class AdminPanel {
         stage.setScene(new Scene(root));
     }
 
-    private VBox createCardsPanel(String title, ListView<String> listView, boolean isActive) {
+    private VBox createCardsPanel(String title, ListView<Card> listView, boolean isActive) {
         VBox box = new VBox(10);
         box.setPadding(new Insets(10));
         box.setStyle(
@@ -110,7 +112,7 @@ public class AdminPanel {
         Label countLabel = new Label("Count: 0");
         countLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 11;");
 
-        listView.getItems().addListener((javafx.collections.ListChangeListener<? super String>) change ->
+        listView.getItems().addListener((javafx.collections.ListChangeListener<? super Card>) change ->
             countLabel.setText("Count: " + listView.getItems().size())
         );
 
@@ -178,22 +180,32 @@ public class AdminPanel {
                 return;
             }
 
-            activeCardsView.getItems().setAll(
-                deck.getActiveCards().stream()
-                    .map(card -> card.getWorkName() + " (" + card.getSongCount() + ")")
-                    .toList()
-            );
+            Card selectedActive = activeCardsView.getSelectionModel().getSelectedItem();
+            Card selectedInactive = inactiveCardsView.getSelectionModel().getSelectedItem();
 
-            inactiveCardsView.getItems().setAll(
-                deck.getInactiveCards().stream()
-                    .map(card -> card.getWorkName() + " (" + card.getSongCount() + ")")
-                    .toList()
-            );
+            List<Card> activeCards = deck.getActiveCards();
+            List<Card> inactiveCards = deck.getInactiveCards();
+
+            activeCardsView.getItems().setAll(activeCards);
+            inactiveCardsView.getItems().setAll(inactiveCards);
+
+            restoreSelection(activeCardsView, activeCards, selectedActive);
+            restoreSelection(inactiveCardsView, inactiveCards, selectedInactive);
 
             updateStatusLabel(state);
             updateInfoArea(state);
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    private void restoreSelection(ListView<Card> listView, List<Card> cards, Card selectedCard) {
+        if (selectedCard == null) {
+            return;
+        }
+        int index = cards.indexOf(selectedCard);
+        if (index >= 0) {
+            listView.getSelectionModel().select(index);
         }
     }
 
@@ -234,21 +246,21 @@ public class AdminPanel {
     }
 
     private void moveSelectedToActive() {
-        int selectedIndex = inactiveCardsView.getSelectionModel().getSelectedIndex();
-        if (selectedIndex >= 0) {
-            Card card = gameEngine.getGameState().getCurrentDeck().getInactiveCards().get(selectedIndex);
-            gameEngine.getGameState().getCurrentDeck().addActiveCard(card);
+        Card selectedCard = inactiveCardsView.getSelectionModel().getSelectedItem();
+        if (selectedCard != null) {
+            gameEngine.getGameState().getCurrentDeck().addActiveCard(selectedCard);
             updateUI();
+            inactiveCardsView.getSelectionModel().clearSelection();
             showInfo("Card moved back to active.");
         }
     }
 
     private void moveSelectedToInactive() {
-        int selectedIndex = activeCardsView.getSelectionModel().getSelectedIndex();
-        if (selectedIndex >= 0) {
-            Card card = gameEngine.getGameState().getCurrentDeck().getActiveCards().get(selectedIndex);
-            gameEngine.getGameState().getCurrentDeck().removeActiveCard(card);
+        Card selectedCard = activeCardsView.getSelectionModel().getSelectedItem();
+        if (selectedCard != null) {
+            gameEngine.getGameState().getCurrentDeck().removeActiveCard(selectedCard);
             updateUI();
+            activeCardsView.getSelectionModel().clearSelection();
             showInfo("Card moved to inactive.");
         }
     }
@@ -289,7 +301,7 @@ public class AdminPanel {
         alert.showAndWait();
     }
 
-    private static class CardListCell extends ListCell<String> {
+    private static class CardListCell extends ListCell<Card> {
         private final boolean isActive;
 
         CardListCell(boolean isActive) {
@@ -297,12 +309,12 @@ public class AdminPanel {
         }
 
         @Override
-        protected void updateItem(String item, boolean empty) {
+        protected void updateItem(Card item, boolean empty) {
             super.updateItem(item, empty);
             if (empty || item == null) {
                 setText(null);
             } else {
-                setText(item);
+                setText(item.getWorkName() + " (" + item.getSongCount() + ")");
                 setStyle(isActive
                     ? "-fx-text-fill: #2e7d32; -fx-font-weight: bold;"
                     : "-fx-text-fill: #666; -fx-font-style: italic;");

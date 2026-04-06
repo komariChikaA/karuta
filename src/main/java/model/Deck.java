@@ -1,6 +1,7 @@
 package model;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
@@ -103,6 +104,34 @@ public class Deck {
      */
     public int getCardCount() {
         return cards.size();
+    }
+
+    public Deck createLimitedDeck(int cardLimit) {
+        Deck limitedDeck = new Deck(deckName, configFile);
+        List<Card> shuffledCards = new ArrayList<>(cards);
+        Collections.shuffle(shuffledCards, RANDOM);
+
+        int limit = Math.max(1, Math.min(cardLimit, shuffledCards.size()));
+        for (int i = 0; i < limit; i++) {
+            limitedDeck.addCard(shuffledCards.get(i));
+        }
+
+        return limitedDeck;
+    }
+
+    public Deck createDeckFromCards(List<Card> selectedCards) {
+        Deck customDeck = new Deck(deckName, configFile);
+        if (selectedCards == null) {
+            return customDeck;
+        }
+
+        for (Card card : selectedCards) {
+            if (cards.contains(card)) {
+                customDeck.addCard(card);
+            }
+        }
+
+        return customDeck;
     }
     
     /**
