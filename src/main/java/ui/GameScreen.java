@@ -10,6 +10,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Slider;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
@@ -20,6 +21,9 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
+import javafx.util.Duration;
 import model.Card;
 import model.Deck;
 import model.GameState;
@@ -45,7 +49,10 @@ public class GameScreen {
     private Label statusLabel;
     private Label statsLabel;
     private Label queueLabel;
+    private Label volumeValueLabel;
     private ProgressBar playbackProgressBar;
+    private Slider volumeSlider;
+    private Timeline playbackTimeline;
     private Button successButton;
     private Button failureButton;
     private Button prepareButton;
@@ -68,9 +75,8 @@ public class GameScreen {
     private void createUI() {
         BorderPane root = new BorderPane();
         root.setStyle(
-            "-fx-background-color: linear-gradient(to bottom right, #f4ede3, #eef4fb);" +
-            "-fx-font-family: 'Segoe UI';"
-        );
+                "-fx-background-color: linear-gradient(to bottom right, #f4ede3, #eef4fb);" +
+                        "-fx-font-family: 'Segoe UI';");
 
         root.setTop(createTopBar());
         root.setCenter(createResponsiveCenter());
@@ -108,9 +114,30 @@ public class GameScreen {
         queueLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #6d7686;");
         statsCard.getChildren().addAll(statsLabel, queueLabel);
 
+        VBox volumeCard = new VBox(8);
+        volumeCard.setPadding(new Insets(14, 20, 14, 20));
+        volumeCard.setStyle(createGlassCardStyle());
+
+        Label volumeLabel = new Label("音量");
+        volumeLabel.setStyle("-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #24324a;");
+
+        volumeValueLabel = new Label("80%");
+        volumeValueLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #6d7686;");
+
+        volumeSlider = new Slider(0, 100, Math.round(gameEngine.getPlaybackVolume() * 100.0));
+        volumeSlider.setPrefWidth(220);
+        volumeSlider.setBlockIncrement(1);
+        volumeSlider.valueProperty().addListener((obs, oldValue, newValue) -> {
+            double normalizedVolume = newValue.doubleValue() / 100.0;
+            volumeValueLabel.setText(String.format("%d%%", Math.round(newValue.doubleValue())));
+            gameEngine.setPlaybackVolume(normalizedVolume);
+        });
+
+        volumeCard.getChildren().addAll(volumeLabel, volumeSlider, volumeValueLabel);
+
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        topBar.getChildren().addAll(titleBlock, spacer, statsCard);
+        topBar.getChildren().addAll(titleBlock, spacer, statsCard, volumeCard);
         return topBar;
     }
 
@@ -143,11 +170,10 @@ public class GameScreen {
         imageFrame.setPadding(new Insets(18));
         imageFrame.setMinHeight(440);
         imageFrame.setStyle(
-            "-fx-background-color: linear-gradient(to bottom, #ffffff, #f7efe4);" +
-            "-fx-background-radius: 28;" +
-            "-fx-border-radius: 28;" +
-            "-fx-border-color: rgba(122,92,46,0.16);"
-        );
+                "-fx-background-color: linear-gradient(to bottom, #ffffff, #f7efe4);" +
+                        "-fx-background-radius: 28;" +
+                        "-fx-border-radius: 28;" +
+                        "-fx-border-color: rgba(122,92,46,0.16);");
 
         cardImageView = new ImageView();
         cardImageView.setFitWidth(320);
@@ -202,10 +228,9 @@ public class GameScreen {
         playbackProgressBar = new ProgressBar(0);
         playbackProgressBar.setPrefWidth(Double.MAX_VALUE);
         playbackProgressBar.setStyle(
-            "-fx-accent: #2f7d4a;" +
-            "-fx-control-inner-background: rgba(47,125,74,0.12);" +
-            "-fx-background-radius: 999;"
-        );
+                "-fx-accent: #2f7d4a;" +
+                        "-fx-control-inner-background: rgba(47,125,74,0.12);" +
+                        "-fx-background-radius: 999;");
 
         stateCard.getChildren().addAll(statusLabel, songTitleLabel, songMetaLabel, playbackProgressBar);
 
@@ -283,18 +308,18 @@ public class GameScreen {
         return buttonBar;
     }
 
-    private Button createButton(String text, String color, javafx.event.EventHandler<javafx.event.ActionEvent> handler) {
+    private Button createButton(String text, String color,
+            javafx.event.EventHandler<javafx.event.ActionEvent> handler) {
         Button button = new Button(text);
         button.setStyle(
-            "-fx-background-color: " + color + ";" +
-            "-fx-text-fill: white;" +
-            "-fx-font-size: 15;" +
-            "-fx-font-weight: bold;" +
-            "-fx-padding: 14 28;" +
-            "-fx-border-radius: 14;" +
-            "-fx-background-radius: 14;" +
-            "-fx-cursor: hand;"
-        );
+                "-fx-background-color: " + color + ";" +
+                        "-fx-text-fill: white;" +
+                        "-fx-font-size: 15;" +
+                        "-fx-font-weight: bold;" +
+                        "-fx-padding: 14 28;" +
+                        "-fx-border-radius: 14;" +
+                        "-fx-background-radius: 14;" +
+                        "-fx-cursor: hand;");
         button.setOnAction(handler);
         return button;
     }
@@ -313,6 +338,7 @@ public class GameScreen {
                     failureButton.setDisable(true);
                     updateRestMusicToggleButton();
                     playbackProgressBar.setProgress(0);
+                    stopPlaybackTimeline();
                     refreshDeckSummary();
                 });
             }
@@ -331,6 +357,7 @@ public class GameScreen {
                     failureButton.setDisable(true);
                     updateRestMusicToggleButton();
                     playbackProgressBar.setProgress(0);
+                    stopPlaybackTimeline();
                     refreshDeckSummary();
                 });
             }
@@ -340,10 +367,11 @@ public class GameScreen {
                 Platform.runLater(() -> {
                     songTitleLabel.setText(song.getDisplayName());
                     songMetaLabel.setText(String.format("格式 %s | 文件 %s",
-                        song.getFileFormat().toUpperCase(), song.getFileName()));
+                            song.getFileFormat().toUpperCase(), song.getFileName()));
                     statusLabel.setText("正在播放，可随时结束本回合。");
                     successButton.setDisable(false);
                     failureButton.setDisable(false);
+                    startPlaybackTimeline();
                 });
             }
 
@@ -354,12 +382,16 @@ public class GameScreen {
                     successButton.setDisable(false);
                     failureButton.setDisable(false);
                     playbackProgressBar.setProgress(1.0);
+                    stopPlaybackTimeline();
                 });
             }
 
             @Override
             public void onMusicInterrupted() {
-                Platform.runLater(() -> statusLabel.setText("播放已停止。"));
+                Platform.runLater(() -> {
+                    statusLabel.setText("播放已停止。");
+                    stopPlaybackTimeline();
+                });
             }
 
             @Override
@@ -367,7 +399,7 @@ public class GameScreen {
                 Platform.runLater(() -> {
                     GameState state = gameEngine.getGameState();
                     roundLabel.setText(String.format("已进行 %d | 剩余 %d",
-                        state.getCurrentRound(), state.getRemainingRounds()));
+                            state.getCurrentRound(), state.getRemainingRounds()));
                     updateStats(state);
                     refreshDeckSummary();
                     prepareButton.setDisable(false);
@@ -375,6 +407,7 @@ public class GameScreen {
                     statusLabel.setText("回合完成，点击准备下一回合继续。");
                     successButton.setDisable(true);
                     failureButton.setDisable(true);
+                    stopPlaybackTimeline();
                 });
             }
 
@@ -490,11 +523,10 @@ public class GameScreen {
 
     private void updateStats(GameState state) {
         statsLabel.setText(String.format(
-            "成功 %d | 失败 %d | 成功率 %.1f%%",
-            state.getSuccessCount(),
-            state.getFailureCount(),
-            state.getSuccessRate()
-        ));
+                "成功 %d | 失败 %d | 成功率 %.1f%%",
+                state.getSuccessCount(),
+                state.getFailureCount(),
+                state.getSuccessRate()));
     }
 
     private void refreshDeckSummary() {
@@ -512,7 +544,7 @@ public class GameScreen {
         roundLabel.setText(String.format("已进行 %d | 剩余 %d", playedRounds, remainingRounds));
         deckInfoLabel.setText(String.format("%s  |  剩余回合 %d", deck.getDeckName(), remainingRounds));
         queueLabel.setText(String.format("在场卡牌 %d | 离场卡牌 %d",
-            deck.getActiveCardCount(), deck.getInactiveCards().size()));
+                deck.getActiveCardCount(), deck.getInactiveCards().size()));
     }
 
     private String buildSongList(Card card) {
@@ -520,43 +552,71 @@ public class GameScreen {
             return "该卡牌没有可播放歌曲。";
         }
         return card.getSongs().stream()
-            .limit(4)
-            .map(Song::getDisplayName)
-            .collect(Collectors.joining(" / "));
+                .limit(4)
+                .map(Song::getDisplayName)
+                .collect(Collectors.joining(" / "));
     }
 
     private void showGameOverDialog(GameState state) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("游戏结束");
         alert.setContentText(String.format(
-            "对战结束%n%n回合数：%d%n成功：%d%n失败：%d%n成功率：%.1f%%",
-            state.getCurrentRound(),
-            state.getSuccessCount(),
-            state.getFailureCount(),
-            state.getSuccessRate()
-        ));
+                "对战结束%n%n回合数：%d%n成功：%d%n失败：%d%n成功率：%.1f%%",
+                state.getCurrentRound(),
+                state.getSuccessCount(),
+                state.getFailureCount(),
+                state.getSuccessRate()));
         alert.showAndWait();
         returnToMenu();
     }
 
     private void returnToMenu() {
         gameEngine.abortGame();
+        stopPlaybackTimeline();
         mainWindow.returnToDeckSelection();
+    }
+
+    private void startPlaybackTimeline() {
+        stopPlaybackTimeline();
+
+        int durationSeconds = Math.max(1, gameEngine.getCurrentPlaybackDurationSeconds());
+        playbackTimeline = new Timeline();
+        playbackTimeline.setCycleCount(Timeline.INDEFINITE);
+
+        final long startTime = System.nanoTime();
+        KeyFrame frame = new KeyFrame(Duration.millis(100), event -> {
+            double elapsedSeconds = (System.nanoTime() - startTime) / 1_000_000_000.0;
+            double progress = Math.min(1.0, elapsedSeconds / durationSeconds);
+            playbackProgressBar.setProgress(progress);
+            if (progress >= 1.0) {
+                stopPlaybackTimeline();
+            }
+        });
+
+        playbackTimeline.getKeyFrames().setAll(frame);
+        playbackTimeline.playFromStart();
+    }
+
+    private void stopPlaybackTimeline() {
+        if (playbackTimeline != null) {
+            playbackTimeline.stop();
+            playbackTimeline = null;
+        }
     }
 
     private String createPanelStyle(String color) {
         return "-fx-background-color: " + color + ";" +
-            "-fx-background-radius: 24;" +
-            "-fx-border-radius: 24;" +
-            "-fx-border-color: rgba(29,42,68,0.08);" +
-            "-fx-effect: dropshadow(gaussian, rgba(22,33,58,0.10), 24, 0.18, 0, 8);";
+                "-fx-background-radius: 24;" +
+                "-fx-border-radius: 24;" +
+                "-fx-border-color: rgba(29,42,68,0.08);" +
+                "-fx-effect: dropshadow(gaussian, rgba(22,33,58,0.10), 24, 0.18, 0, 8);";
     }
 
     private String createGlassCardStyle() {
         return "-fx-background-color: rgba(255,255,255,0.84);" +
-            "-fx-background-radius: 20;" +
-            "-fx-border-radius: 20;" +
-            "-fx-border-color: rgba(36,50,74,0.08);";
+                "-fx-background-radius: 20;" +
+                "-fx-border-radius: 20;" +
+                "-fx-border-color: rgba(36,50,74,0.08);";
     }
 
     public Scene getScene() {

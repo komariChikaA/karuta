@@ -14,6 +14,7 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.Separator;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.TextFormatter;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
@@ -21,6 +22,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.util.converter.IntegerStringConverter;
 import model.Card;
 import model.Deck;
 import model.Song;
@@ -62,9 +64,8 @@ public class DeckSelectionScreen {
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(28));
         root.setStyle(
-            "-fx-background-color: linear-gradient(to bottom right, #f7efe4, #f2f5fb);" +
-            "-fx-font-family: 'Segoe UI';"
-        );
+                "-fx-background-color: linear-gradient(to bottom right, #f7efe4, #f2f5fb);" +
+                        "-fx-font-family: 'Segoe UI';");
 
         VBox hero = new VBox(8);
         hero.setPadding(new Insets(0, 0, 24, 0));
@@ -106,18 +107,16 @@ public class DeckSelectionScreen {
         deckListView = new ListView<>();
         deckListView.setPrefHeight(320);
         deckListView.setStyle(
-            "-fx-background-color: transparent;" +
-            "-fx-control-inner-background: #fffdf8;" +
-            "-fx-background-insets: 0;" +
-            "-fx-border-color: #eadfca;" +
-            "-fx-border-radius: 16;" +
-            "-fx-background-radius: 16;" +
-            "-fx-padding: 8;"
-        );
+                "-fx-background-color: transparent;" +
+                        "-fx-control-inner-background: #fffdf8;" +
+                        "-fx-background-insets: 0;" +
+                        "-fx-border-color: #eadfca;" +
+                        "-fx-border-radius: 16;" +
+                        "-fx-background-radius: 16;" +
+                        "-fx-padding: 8;");
         loadAvailableDecks();
-        deckListView.getSelectionModel().selectedIndexProperty().addListener((obs, oldValue, newValue) ->
-            updateDeckPreview(newValue.intValue())
-        );
+        deckListView.getSelectionModel().selectedIndexProperty()
+                .addListener((obs, oldValue, newValue) -> updateDeckPreview(newValue.intValue()));
 
         VBox roundsCard = new VBox(10);
         roundsCard.setPadding(new Insets(18));
@@ -130,7 +129,12 @@ public class DeckSelectionScreen {
         roundsHintLabel.setWrapText(true);
         roundsHintLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #7a8598;");
 
-        cardsSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 100, 10));
+        SpinnerValueFactory.IntegerSpinnerValueFactory cardCountFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(
+                1, 100, 50);
+        cardsSpinner = new Spinner<>();
+        cardsSpinner.setValueFactory(cardCountFactory);
+        cardsSpinner.setEditable(true);
+        configureCardCountEditor(cardCountFactory);
         cardsSpinner.setStyle("-fx-font-size: 14;");
         cardsSpinner.setPrefWidth(160);
 
@@ -142,7 +146,8 @@ public class DeckSelectionScreen {
         restMusicCheckBox.setStyle("-fx-font-size: 13; -fx-text-fill: #31415f;");
 
         failureModeComboBox = new ComboBox<>();
-        failureModeComboBox.setItems(FXCollections.observableArrayList(GameRules.FailureMode.PASS, GameRules.FailureMode.SKIP));
+        failureModeComboBox
+                .setItems(FXCollections.observableArrayList(GameRules.FailureMode.PASS, GameRules.FailureMode.SKIP));
         failureModeComboBox.setValue(mainWindow.getGameRules().getFailureMode());
         failureModeComboBox.setPrefWidth(180);
 
@@ -159,7 +164,8 @@ public class DeckSelectionScreen {
         HBox buttonBox = new HBox(15, startButton, exitButton);
         buttonBox.setAlignment(Pos.CENTER_LEFT);
 
-        roundsCard.getChildren().addAll(roundsLabel, roundsHintLabel, roundsBox, failureModeBox, restMusicCheckBox, buttonBox);
+        roundsCard.getChildren().addAll(roundsLabel, roundsHintLabel, roundsBox, failureModeBox, restMusicCheckBox,
+                buttonBox);
         leftPanel.getChildren().addAll(deckLabel, deckHintLabel, deckActionBar, deckListView, roundsCard);
 
         VBox rightPanel = new VBox(18);
@@ -220,14 +226,13 @@ public class DeckSelectionScreen {
         previewCardListView = new ListView<>();
         previewCardListView.setPrefHeight(360);
         previewCardListView.setStyle(
-            "-fx-background-color: transparent;" +
-            "-fx-control-inner-background: white;" +
-            "-fx-background-insets: 0;" +
-            "-fx-border-color: #dfe6f2;" +
-            "-fx-border-radius: 14;" +
-            "-fx-background-radius: 14;" +
-            "-fx-padding: 8;"
-        );
+                "-fx-background-color: transparent;" +
+                        "-fx-control-inner-background: white;" +
+                        "-fx-background-insets: 0;" +
+                        "-fx-border-color: #dfe6f2;" +
+                        "-fx-border-radius: 14;" +
+                        "-fx-background-radius: 14;" +
+                        "-fx-padding: 8;");
 
         listCard.getChildren().addAll(listTitle, listHint, previewCardListView);
         previewContent.getChildren().addAll(artworkCard, listCard);
@@ -252,7 +257,8 @@ public class DeckSelectionScreen {
         if (decksFolder != null && decksFolder.exists() && decksFolder.isDirectory()) {
             File[] files = decksFolder.listFiles((dir, name) -> name.endsWith(".csv"));
             if (files != null) {
-                java.util.Arrays.sort(files, java.util.Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+                java.util.Arrays.sort(files,
+                        java.util.Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
                 for (File file : files) {
                     deckFiles.add(file);
                     deckListView.getItems().add(file.getName().replace(".csv", ""));
@@ -294,11 +300,10 @@ public class DeckSelectionScreen {
     private void openImportDialog() {
         String selectedDeckName = getSelectedDeckName();
         DatasetImportDialog dialog = new DatasetImportDialog(
-            scene.getWindow() instanceof javafx.stage.Stage stage ? stage : null,
-            configManager,
-            selectedDeckName,
-            this::refreshDeckList
-        );
+                scene.getWindow() instanceof javafx.stage.Stage stage ? stage : null,
+                configManager,
+                selectedDeckName,
+                this::refreshDeckList);
         dialog.showAndWait();
         refreshDeckList(selectedDeckName);
     }
@@ -328,7 +333,8 @@ public class DeckSelectionScreen {
             int totalSongs = deck.getCards().stream().mapToInt(Card::getSongCount).sum();
             deckNameLabel.setText(deck.getDeckName());
             deckMetaLabel.setText(String.format("卡牌 %d | 歌曲 %d", deck.getCardCount(), totalSongs));
-            cardsSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, Math.max(1, deck.getCardCount()), Math.min(10, Math.max(1, deck.getCardCount()))));
+            cardsSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1,
+                    Math.max(1, deck.getCardCount()), Math.min(10, Math.max(1, deck.getCardCount()))));
 
             Card heroCard = deck.getCards().isEmpty() ? null : deck.getCards().get(0);
             if (heroCard != null) {
@@ -343,11 +349,10 @@ public class DeckSelectionScreen {
             }
 
             previewCardListView.setItems(FXCollections.observableArrayList(
-                deck.getCards().stream()
-                    .limit(12)
-                    .map(this::buildCardListLabel)
-                    .collect(Collectors.toList())
-            ));
+                    deck.getCards().stream()
+                            .limit(12)
+                            .map(this::buildCardListLabel)
+                            .collect(Collectors.toList())));
         } catch (Exception e) {
             deckNameLabel.setText("预览失败");
             deckMetaLabel.setText(e.getMessage());
@@ -382,15 +387,15 @@ public class DeckSelectionScreen {
         }
 
         return songs.stream()
-            .limit(3)
-            .map(Song::getDisplayName)
-            .collect(Collectors.joining(" / "));
+                .limit(3)
+                .map(Song::getDisplayName)
+                .collect(Collectors.joining(" / "));
     }
 
     private String buildCardListLabel(Card card) {
         String firstSong = card.getSongs().isEmpty()
-            ? "无歌曲"
-            : card.getSongs().get(0).getDisplayName();
+                ? "无歌曲"
+                : card.getSongs().get(0).getDisplayName();
         return card.getWorkName() + "  |  " + firstSong;
     }
 
@@ -406,10 +411,9 @@ public class DeckSelectionScreen {
             Deck deck = configManager.loadDeck(selectedDeckFile.getAbsolutePath());
             int selectedCardCount = cardsSpinner.getValue();
             CardSelectionDialog cardSelectionDialog = new CardSelectionDialog(
-                scene.getWindow() instanceof javafx.stage.Stage stage ? stage : null,
-                deck,
-                selectedCardCount
-            );
+                    scene.getWindow() instanceof javafx.stage.Stage stage ? stage : null,
+                    deck,
+                    selectedCardCount);
             CardSelectionDialog.SelectionResult selectionResult = cardSelectionDialog.showAndWait();
             if (selectionResult.selectedCards().isEmpty()) {
                 return;
@@ -418,16 +422,15 @@ public class DeckSelectionScreen {
             Deck limitedDeck = deck.createDeckFromCards(selectionResult.selectedCards());
             Set<Card> selectedCards = new LinkedHashSet<>(selectionResult.selectedCards());
             List<Song> restSongs = deck.getCards().stream()
-                .filter(card -> !selectedCards.contains(card))
-                .flatMap(card -> card.getSongs().stream())
-                .toList();
+                    .filter(card -> !selectedCards.contains(card))
+                    .flatMap(card -> card.getSongs().stream())
+                    .toList();
             mainWindow.startGame(
-                limitedDeck,
-                limitedDeck.getCardCount(),
-                restMusicCheckBox.isSelected(),
-                failureModeComboBox.getValue(),
-                restSongs
-            );
+                    limitedDeck,
+                    limitedDeck.getCardCount(),
+                    restMusicCheckBox.isSelected(),
+                    failureModeComboBox.getValue(),
+                    restSongs);
         } catch (Exception e) {
             mainWindow.showErrorDialog("加载数据集失败", e.getMessage());
         }
@@ -441,40 +444,54 @@ public class DeckSelectionScreen {
 
     private String createPanelStyle(String background) {
         return "-fx-background-color: " + background + ";" +
-            "-fx-background-radius: 24;" +
-            "-fx-border-radius: 24;" +
-            "-fx-border-color: rgba(29,42,68,0.08);" +
-            "-fx-effect: dropshadow(gaussian, rgba(22,33,58,0.10), 24, 0.18, 0, 8);";
+                "-fx-background-radius: 24;" +
+                "-fx-border-radius: 24;" +
+                "-fx-border-color: rgba(29,42,68,0.08);" +
+                "-fx-effect: dropshadow(gaussian, rgba(22,33,58,0.10), 24, 0.18, 0, 8);";
     }
 
     private String createInsetCardStyle() {
         return "-fx-background-color: rgba(255,255,255,0.78);" +
-            "-fx-background-radius: 18;" +
-            "-fx-border-radius: 18;" +
-            "-fx-border-color: rgba(36,50,74,0.08);";
+                "-fx-background-radius: 18;" +
+                "-fx-border-radius: 18;" +
+                "-fx-border-color: rgba(36,50,74,0.08);";
     }
 
     private String createPrimaryButtonStyle(String color) {
         return "-fx-background-color: " + color + ";" +
-            "-fx-text-fill: white;" +
-            "-fx-font-size: 15;" +
-            "-fx-font-weight: bold;" +
-            "-fx-padding: 14 28;" +
-            "-fx-background-radius: 14;" +
-            "-fx-border-radius: 14;" +
-            "-fx-cursor: hand;";
+                "-fx-text-fill: white;" +
+                "-fx-font-size: 15;" +
+                "-fx-font-weight: bold;" +
+                "-fx-padding: 14 28;" +
+                "-fx-background-radius: 14;" +
+                "-fx-border-radius: 14;" +
+                "-fx-cursor: hand;";
     }
 
     private String createSecondaryButtonStyle() {
         return "-fx-background-color: white;" +
-            "-fx-text-fill: #31415f;" +
-            "-fx-font-size: 14;" +
-            "-fx-font-weight: bold;" +
-            "-fx-padding: 13 24;" +
-            "-fx-background-radius: 14;" +
-            "-fx-border-radius: 14;" +
-            "-fx-border-color: #d8deea;" +
-            "-fx-cursor: hand;";
+                "-fx-text-fill: #31415f;" +
+                "-fx-font-size: 14;" +
+                "-fx-font-weight: bold;" +
+                "-fx-padding: 13 24;" +
+                "-fx-background-radius: 14;" +
+                "-fx-border-radius: 14;" +
+                "-fx-border-color: #d8deea;" +
+                "-fx-cursor: hand;";
+    }
+
+    private void configureCardCountEditor(SpinnerValueFactory.IntegerSpinnerValueFactory valueFactory) {
+        TextFormatter<Integer> formatter = new TextFormatter<>(
+                new IntegerStringConverter(),
+                valueFactory.getValue(),
+                change -> change.getControlNewText().matches("\\d*") ? change : null);
+        cardsSpinner.getEditor().setTextFormatter(formatter);
+        formatter.valueProperty().bindBidirectional(valueFactory.valueProperty());
+        cardsSpinner.focusedProperty().addListener((obs, wasFocused, isFocused) -> {
+            if (!isFocused) {
+                cardsSpinner.increment(0);
+            }
+        });
     }
 
     public Scene getScene() {
