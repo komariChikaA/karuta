@@ -1,5 +1,5 @@
 module karuta.jukebox {
-    requires javafx.controls;
+    requires transitive javafx.controls;
     requires javafx.media;
 
     exports audio;

@@ -14,6 +14,7 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.Separator;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
+import javafx.scene.control.TextFormatter;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
@@ -21,6 +22,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.util.converter.IntegerStringConverter;
 import model.Card;
 import model.Deck;
 import model.Song;
@@ -28,7 +30,9 @@ import model.Song;
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class DeckSelectionScreen {
@@ -60,17 +64,16 @@ public class DeckSelectionScreen {
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(28));
         root.setStyle(
-            "-fx-background-color: linear-gradient(to bottom right, #f7efe4, #f2f5fb);" +
-            "-fx-font-family: 'Segoe UI';"
-        );
+                "-fx-background-color: linear-gradient(to bottom right, #f7efe4, #f2f5fb);" +
+                        "-fx-font-family: 'Segoe UI';");
 
         VBox hero = new VBox(8);
         hero.setPadding(new Insets(0, 0, 24, 0));
 
-        Label titleLabel = new Label("Karuta Jukebox");
+        Label titleLabel = new Label("点歌对战");
         titleLabel.setStyle("-fx-font-size: 36; -fx-font-weight: bold; -fx-text-fill: #1d2a44;");
 
-        Label subtitleLabel = new Label("Choose a deck, preview its art, then start a round set.");
+        Label subtitleLabel = new Label("选择数据集，预览卡面，然后开始对战。");
         subtitleLabel.setStyle("-fx-font-size: 15; -fx-text-fill: #6d7686;");
 
         hero.getChildren().addAll(titleLabel, subtitleLabel);
@@ -83,10 +86,10 @@ public class DeckSelectionScreen {
         leftPanel.setPadding(new Insets(26));
         leftPanel.setStyle(createPanelStyle("#fffaf3"));
 
-        Label deckLabel = new Label("Available Decks");
+        Label deckLabel = new Label("可用数据集");
         deckLabel.setStyle("-fx-font-size: 18; -fx-font-weight: bold; -fx-text-fill: #24324a;");
 
-        Label deckHintLabel = new Label("Select a deck on the left. The right side shows art and song preview.");
+        Label deckHintLabel = new Label("左侧选择数据集，右侧查看卡面与歌曲预览。");
         deckHintLabel.setWrapText(true);
         deckHintLabel.setStyle("-fx-font-size: 13; -fx-text-fill: #7a8598;");
 
@@ -104,70 +107,75 @@ public class DeckSelectionScreen {
         deckListView = new ListView<>();
         deckListView.setPrefHeight(320);
         deckListView.setStyle(
-            "-fx-background-color: transparent;" +
-            "-fx-control-inner-background: #fffdf8;" +
-            "-fx-background-insets: 0;" +
-            "-fx-border-color: #eadfca;" +
-            "-fx-border-radius: 16;" +
-            "-fx-background-radius: 16;" +
-            "-fx-padding: 8;"
-        );
+                "-fx-background-color: transparent;" +
+                        "-fx-control-inner-background: #fffdf8;" +
+                        "-fx-background-insets: 0;" +
+                        "-fx-border-color: #eadfca;" +
+                        "-fx-border-radius: 16;" +
+                        "-fx-background-radius: 16;" +
+                        "-fx-padding: 8;");
         loadAvailableDecks();
-        deckListView.getSelectionModel().selectedIndexProperty().addListener((obs, oldValue, newValue) ->
-            updateDeckPreview(newValue.intValue())
-        );
+        deckListView.getSelectionModel().selectedIndexProperty()
+                .addListener((obs, oldValue, newValue) -> updateDeckPreview(newValue.intValue()));
 
         VBox roundsCard = new VBox(10);
         roundsCard.setPadding(new Insets(18));
         roundsCard.setStyle(createInsetCardStyle());
 
-        Label roundsLabel = new Label("Match Setup");
+        Label roundsLabel = new Label("对战设置");
         roundsLabel.setStyle("-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #24324a;");
 
-        Label roundsHintLabel = new Label("Pick how many cards from this dataset should be used in this session.");
+        Label roundsHintLabel = new Label("设置本局使用的卡牌数量。");
         roundsHintLabel.setWrapText(true);
         roundsHintLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #7a8598;");
 
-        cardsSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 100, 10));
+        SpinnerValueFactory.IntegerSpinnerValueFactory cardCountFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(
+                1, 100, 50);
+        cardsSpinner = new Spinner<>();
+        cardsSpinner.setValueFactory(cardCountFactory);
+        cardsSpinner.setEditable(true);
+        configureCardCountEditor(cardCountFactory);
         cardsSpinner.setStyle("-fx-font-size: 14;");
         cardsSpinner.setPrefWidth(160);
 
-        HBox roundsBox = new HBox(12, new Label("Cards"), cardsSpinner);
+        HBox roundsBox = new HBox(12, new Label("卡牌数"), cardsSpinner);
         roundsBox.setAlignment(Pos.CENTER_LEFT);
 
-        restMusicCheckBox = new CheckBox("Play break music during rest");
+        restMusicCheckBox = new CheckBox("休息时间播放歌曲");
         restMusicCheckBox.setSelected(true);
         restMusicCheckBox.setStyle("-fx-font-size: 13; -fx-text-fill: #31415f;");
 
         failureModeComboBox = new ComboBox<>();
-        failureModeComboBox.setItems(FXCollections.observableArrayList(GameRules.FailureMode.PASS, GameRules.FailureMode.SKIP));
+        failureModeComboBox
+                .setItems(FXCollections.observableArrayList(GameRules.FailureMode.PASS, GameRules.FailureMode.SKIP));
         failureModeComboBox.setValue(mainWindow.getGameRules().getFailureMode());
         failureModeComboBox.setPrefWidth(180);
 
-        HBox failureModeBox = new HBox(12, new Label("On Failure"), failureModeComboBox);
+        HBox failureModeBox = new HBox(12, new Label("失败处理"), failureModeComboBox);
         failureModeBox.setAlignment(Pos.CENTER_LEFT);
 
-        Button startButton = createButton("Start", "#2f7d4a");
+        Button startButton = createButton("开始", "#2f7d4a");
         startButton.setOnAction(e -> startGame());
 
-        Button exitButton = new Button("Exit");
+        Button exitButton = new Button("退出");
         exitButton.setStyle(createSecondaryButtonStyle());
         exitButton.setOnAction(e -> System.exit(0));
 
         HBox buttonBox = new HBox(15, startButton, exitButton);
         buttonBox.setAlignment(Pos.CENTER_LEFT);
 
-        roundsCard.getChildren().addAll(roundsLabel, roundsHintLabel, roundsBox, failureModeBox, restMusicCheckBox, buttonBox);
+        roundsCard.getChildren().addAll(roundsLabel, roundsHintLabel, roundsBox, failureModeBox, restMusicCheckBox,
+                buttonBox);
         leftPanel.getChildren().addAll(deckLabel, deckHintLabel, deckActionBar, deckListView, roundsCard);
 
         VBox rightPanel = new VBox(18);
         rightPanel.setPadding(new Insets(26));
         rightPanel.setStyle(createPanelStyle("#f8fbff"));
 
-        deckNameLabel = new Label("No deck selected");
+        deckNameLabel = new Label("未选择数据集");
         deckNameLabel.setStyle("-fx-font-size: 24; -fx-font-weight: bold; -fx-text-fill: #1d2a44;");
 
-        deckMetaLabel = new Label("Cards 0 | Songs 0");
+        deckMetaLabel = new Label("卡牌 0 | 歌曲 0");
         deckMetaLabel.setStyle("-fx-font-size: 13; -fx-text-fill: #6d7686;");
 
         HBox previewContent = new HBox(20);
@@ -184,18 +192,18 @@ public class DeckSelectionScreen {
         previewImageView.setPreserveRatio(true);
         previewImageView.setSmooth(true);
 
-        emptyPreviewLabel = new Label("Artwork preview area");
+        emptyPreviewLabel = new Label("卡面预览区域");
         emptyPreviewLabel.setWrapText(true);
         emptyPreviewLabel.setMaxWidth(220);
         emptyPreviewLabel.setAlignment(Pos.CENTER);
         emptyPreviewLabel.setStyle("-fx-font-size: 14; -fx-text-fill: #7a8598;");
 
-        previewTitleLabel = new Label("Pick a deck");
+        previewTitleLabel = new Label("请选择数据集");
         previewTitleLabel.setWrapText(true);
         previewTitleLabel.setAlignment(Pos.CENTER);
         previewTitleLabel.setStyle("-fx-font-size: 18; -fx-font-weight: bold; -fx-text-fill: #24324a;");
 
-        previewSongsLabel = new Label("Song names will appear here.");
+        previewSongsLabel = new Label("歌曲信息将显示在这里。");
         previewSongsLabel.setWrapText(true);
         previewSongsLabel.setMaxWidth(240);
         previewSongsLabel.setAlignment(Pos.CENTER);
@@ -208,24 +216,23 @@ public class DeckSelectionScreen {
         listCard.setStyle(createInsetCardStyle());
         HBox.setHgrow(listCard, Priority.ALWAYS);
 
-        Label listTitle = new Label("Card Preview");
+        Label listTitle = new Label("卡牌预览");
         listTitle.setStyle("-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #24324a;");
 
-        Label listHint = new Label("This section leaves room for card art, titles, and quick song counts.");
+        Label listHint = new Label("展示卡面、作品标题和歌曲数量。");
         listHint.setWrapText(true);
         listHint.setStyle("-fx-font-size: 12; -fx-text-fill: #7a8598;");
 
         previewCardListView = new ListView<>();
         previewCardListView.setPrefHeight(360);
         previewCardListView.setStyle(
-            "-fx-background-color: transparent;" +
-            "-fx-control-inner-background: white;" +
-            "-fx-background-insets: 0;" +
-            "-fx-border-color: #dfe6f2;" +
-            "-fx-border-radius: 14;" +
-            "-fx-background-radius: 14;" +
-            "-fx-padding: 8;"
-        );
+                "-fx-background-color: transparent;" +
+                        "-fx-control-inner-background: white;" +
+                        "-fx-background-insets: 0;" +
+                        "-fx-border-color: #dfe6f2;" +
+                        "-fx-border-radius: 14;" +
+                        "-fx-background-radius: 14;" +
+                        "-fx-padding: 8;");
 
         listCard.getChildren().addAll(listTitle, listHint, previewCardListView);
         previewContent.getChildren().addAll(artworkCard, listCard);
@@ -250,7 +257,8 @@ public class DeckSelectionScreen {
         if (decksFolder != null && decksFolder.exists() && decksFolder.isDirectory()) {
             File[] files = decksFolder.listFiles((dir, name) -> name.endsWith(".csv"));
             if (files != null) {
-                java.util.Arrays.sort(files, java.util.Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+                java.util.Arrays.sort(files,
+                        java.util.Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
                 for (File file : files) {
                     deckFiles.add(file);
                     deckListView.getItems().add(file.getName().replace(".csv", ""));
@@ -259,7 +267,7 @@ public class DeckSelectionScreen {
         }
 
         if (deckListView.getItems().isEmpty()) {
-            deckListView.getItems().add("No deck files found");
+            deckListView.getItems().add("未找到数据集文件");
             deckListView.setDisable(true);
         } else {
             deckListView.setDisable(false);
@@ -292,11 +300,10 @@ public class DeckSelectionScreen {
     private void openImportDialog() {
         String selectedDeckName = getSelectedDeckName();
         DatasetImportDialog dialog = new DatasetImportDialog(
-            scene.getWindow() instanceof javafx.stage.Stage stage ? stage : null,
-            configManager,
-            selectedDeckName,
-            this::refreshDeckList
-        );
+                scene.getWindow() instanceof javafx.stage.Stage stage ? stage : null,
+                configManager,
+                selectedDeckName,
+                this::refreshDeckList);
         dialog.showAndWait();
         refreshDeckList(selectedDeckName);
     }
@@ -311,10 +318,10 @@ public class DeckSelectionScreen {
 
     private void updateDeckPreview(int selectedIndex) {
         if (selectedIndex < 0 || selectedIndex >= deckFiles.size()) {
-            deckNameLabel.setText("No deck selected");
-            deckMetaLabel.setText("Cards 0 | Songs 0");
-            previewTitleLabel.setText("Pick a deck");
-            previewSongsLabel.setText("Song names will appear here.");
+            deckNameLabel.setText("未选择数据集");
+            deckMetaLabel.setText("卡牌 0 | 歌曲 0");
+            previewTitleLabel.setText("请选择数据集");
+            previewSongsLabel.setText("歌曲信息将显示在这里。");
             previewImageView.setImage(null);
             emptyPreviewLabel.setVisible(true);
             previewCardListView.setItems(FXCollections.observableArrayList());
@@ -325,8 +332,9 @@ public class DeckSelectionScreen {
             Deck deck = configManager.loadDeck(deckFiles.get(selectedIndex).getAbsolutePath());
             int totalSongs = deck.getCards().stream().mapToInt(Card::getSongCount).sum();
             deckNameLabel.setText(deck.getDeckName());
-            deckMetaLabel.setText(String.format("Cards %d | Songs %d", deck.getCardCount(), totalSongs));
-            cardsSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, Math.max(1, deck.getCardCount()), Math.min(10, Math.max(1, deck.getCardCount()))));
+            deckMetaLabel.setText(String.format("卡牌 %d | 歌曲 %d", deck.getCardCount(), totalSongs));
+            cardsSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1,
+                    Math.max(1, deck.getCardCount()), Math.min(10, Math.max(1, deck.getCardCount()))));
 
             Card heroCard = deck.getCards().isEmpty() ? null : deck.getCards().get(0);
             if (heroCard != null) {
@@ -334,23 +342,22 @@ public class DeckSelectionScreen {
                 previewSongsLabel.setText(buildSongPreview(heroCard));
                 updatePreviewImage(heroCard);
             } else {
-                previewTitleLabel.setText("Deck has no playable cards");
-                previewSongsLabel.setText("Check the csv rows and audio assets.");
+                previewTitleLabel.setText("该数据集没有可用卡牌");
+                previewSongsLabel.setText("请检查 csv 内容和音频文件。");
                 previewImageView.setImage(null);
                 emptyPreviewLabel.setVisible(true);
             }
 
             previewCardListView.setItems(FXCollections.observableArrayList(
-                deck.getCards().stream()
-                    .limit(12)
-                    .map(this::buildCardListLabel)
-                    .collect(Collectors.toList())
-            ));
+                    deck.getCards().stream()
+                            .limit(12)
+                            .map(this::buildCardListLabel)
+                            .collect(Collectors.toList())));
         } catch (Exception e) {
-            deckNameLabel.setText("Preview failed");
+            deckNameLabel.setText("预览失败");
             deckMetaLabel.setText(e.getMessage());
-            previewTitleLabel.setText("Unable to read deck");
-            previewSongsLabel.setText("Check config paths and deck assets.");
+            previewTitleLabel.setText("无法读取数据集");
+            previewSongsLabel.setText("请检查配置路径和资源文件。");
             previewImageView.setImage(null);
             emptyPreviewLabel.setVisible(true);
             previewCardListView.setItems(FXCollections.observableArrayList());
@@ -376,26 +383,26 @@ public class DeckSelectionScreen {
     private String buildSongPreview(Card card) {
         List<Song> songs = card.getSongs();
         if (songs.isEmpty()) {
-            return "No songs linked to this card.";
+            return "该卡牌没有关联歌曲。";
         }
 
         return songs.stream()
-            .limit(3)
-            .map(Song::getDisplayName)
-            .collect(Collectors.joining(" / "));
+                .limit(3)
+                .map(Song::getDisplayName)
+                .collect(Collectors.joining(" / "));
     }
 
     private String buildCardListLabel(Card card) {
         String firstSong = card.getSongs().isEmpty()
-            ? "No song"
-            : card.getSongs().get(0).getDisplayName();
+                ? "无歌曲"
+                : card.getSongs().get(0).getDisplayName();
         return card.getWorkName() + "  |  " + firstSong;
     }
 
     private void startGame() {
         int selectedIndex = deckListView.getSelectionModel().getSelectedIndex();
         if (selectedIndex < 0 || selectedIndex >= deckFiles.size()) {
-            mainWindow.showErrorDialog("Error", "Please select a deck.");
+            mainWindow.showErrorDialog("错误", "请先选择数据集。");
             return;
         }
 
@@ -404,28 +411,28 @@ public class DeckSelectionScreen {
             Deck deck = configManager.loadDeck(selectedDeckFile.getAbsolutePath());
             int selectedCardCount = cardsSpinner.getValue();
             CardSelectionDialog cardSelectionDialog = new CardSelectionDialog(
-                scene.getWindow() instanceof javafx.stage.Stage stage ? stage : null,
-                deck,
-                selectedCardCount
-            );
+                    scene.getWindow() instanceof javafx.stage.Stage stage ? stage : null,
+                    deck,
+                    selectedCardCount);
             CardSelectionDialog.SelectionResult selectionResult = cardSelectionDialog.showAndWait();
             if (selectionResult.selectedCards().isEmpty()) {
                 return;
             }
 
             Deck limitedDeck = deck.createDeckFromCards(selectionResult.selectedCards());
-            List<Song> restSongs = selectionResult.unselectedCards().stream()
-                .flatMap(card -> card.getSongs().stream())
-                .toList();
+            Set<Card> selectedCards = new LinkedHashSet<>(selectionResult.selectedCards());
+            List<Song> restSongs = deck.getCards().stream()
+                    .filter(card -> !selectedCards.contains(card))
+                    .flatMap(card -> card.getSongs().stream())
+                    .toList();
             mainWindow.startGame(
-                limitedDeck,
-                limitedDeck.getCardCount(),
-                restMusicCheckBox.isSelected(),
-                failureModeComboBox.getValue(),
-                restSongs
-            );
+                    limitedDeck,
+                    limitedDeck.getCardCount(),
+                    restMusicCheckBox.isSelected(),
+                    failureModeComboBox.getValue(),
+                    restSongs);
         } catch (Exception e) {
-            mainWindow.showErrorDialog("Failed to load deck", e.getMessage());
+            mainWindow.showErrorDialog("加载数据集失败", e.getMessage());
         }
     }
 
@@ -437,40 +444,54 @@ public class DeckSelectionScreen {
 
     private String createPanelStyle(String background) {
         return "-fx-background-color: " + background + ";" +
-            "-fx-background-radius: 24;" +
-            "-fx-border-radius: 24;" +
-            "-fx-border-color: rgba(29,42,68,0.08);" +
-            "-fx-effect: dropshadow(gaussian, rgba(22,33,58,0.10), 24, 0.18, 0, 8);";
+                "-fx-background-radius: 24;" +
+                "-fx-border-radius: 24;" +
+                "-fx-border-color: rgba(29,42,68,0.08);" +
+                "-fx-effect: dropshadow(gaussian, rgba(22,33,58,0.10), 24, 0.18, 0, 8);";
     }
 
     private String createInsetCardStyle() {
         return "-fx-background-color: rgba(255,255,255,0.78);" +
-            "-fx-background-radius: 18;" +
-            "-fx-border-radius: 18;" +
-            "-fx-border-color: rgba(36,50,74,0.08);";
+                "-fx-background-radius: 18;" +
+                "-fx-border-radius: 18;" +
+                "-fx-border-color: rgba(36,50,74,0.08);";
     }
 
     private String createPrimaryButtonStyle(String color) {
         return "-fx-background-color: " + color + ";" +
-            "-fx-text-fill: white;" +
-            "-fx-font-size: 15;" +
-            "-fx-font-weight: bold;" +
-            "-fx-padding: 14 28;" +
-            "-fx-background-radius: 14;" +
-            "-fx-border-radius: 14;" +
-            "-fx-cursor: hand;";
+                "-fx-text-fill: white;" +
+                "-fx-font-size: 15;" +
+                "-fx-font-weight: bold;" +
+                "-fx-padding: 14 28;" +
+                "-fx-background-radius: 14;" +
+                "-fx-border-radius: 14;" +
+                "-fx-cursor: hand;";
     }
 
     private String createSecondaryButtonStyle() {
         return "-fx-background-color: white;" +
-            "-fx-text-fill: #31415f;" +
-            "-fx-font-size: 14;" +
-            "-fx-font-weight: bold;" +
-            "-fx-padding: 13 24;" +
-            "-fx-background-radius: 14;" +
-            "-fx-border-radius: 14;" +
-            "-fx-border-color: #d8deea;" +
-            "-fx-cursor: hand;";
+                "-fx-text-fill: #31415f;" +
+                "-fx-font-size: 14;" +
+                "-fx-font-weight: bold;" +
+                "-fx-padding: 13 24;" +
+                "-fx-background-radius: 14;" +
+                "-fx-border-radius: 14;" +
+                "-fx-border-color: #d8deea;" +
+                "-fx-cursor: hand;";
+    }
+
+    private void configureCardCountEditor(SpinnerValueFactory.IntegerSpinnerValueFactory valueFactory) {
+        TextFormatter<Integer> formatter = new TextFormatter<>(
+                new IntegerStringConverter(),
+                valueFactory.getValue(),
+                change -> change.getControlNewText().matches("\\d*") ? change : null);
+        cardsSpinner.getEditor().setTextFormatter(formatter);
+        formatter.valueProperty().bindBidirectional(valueFactory.valueProperty());
+        cardsSpinner.focusedProperty().addListener((obs, wasFocused, isFocused) -> {
+            if (!isFocused) {
+                cardsSpinner.increment(0);
+            }
+        });
     }
 
     public Scene getScene() {

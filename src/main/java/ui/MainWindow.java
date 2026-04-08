@@ -27,7 +27,7 @@ public class MainWindow extends Application {
     @Override
     public void start(Stage stage) {
         primaryStage = stage;
-        primaryStage.setTitle("Karuta Jukebox");
+        primaryStage.setTitle("歌牌对战");
         primaryStage.setWidth(1200);
         primaryStage.setHeight(800);
 
@@ -38,7 +38,7 @@ public class MainWindow extends Application {
             deckSelectionScreen = new DeckSelectionScreen(this);
             showDeckSelectionScreen();
         } catch (IOException e) {
-            showErrorDialog("Failed to load config", e.getMessage());
+            showErrorDialog("配置加载失败", e.getMessage());
         }
 
         primaryStage.show();
@@ -62,10 +62,12 @@ public class MainWindow extends Application {
             gameRules.setRestMusicPool(restMusicPool);
             gameScreen = new GameScreen(this, gameEngine);
             gameScreen.initialize(selectedDeck, totalRounds);
+            primaryStage.setWidth(Math.max(primaryStage.getWidth(), 1540));
+            primaryStage.setHeight(Math.max(primaryStage.getHeight(), 950));
             primaryStage.setScene(gameScreen.getScene());
             openAdminPanel();
         } catch (Exception e) {
-            showErrorDialog("Failed to start game", e.getMessage());
+            showErrorDialog("启动游戏失败", e.getMessage());
         }
     }
 

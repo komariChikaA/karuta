@@ -41,7 +41,7 @@ public class AdminPanel {
 
     private void createUI() {
         stage = new Stage();
-        stage.setTitle("Admin Panel");
+        stage.setTitle("管理面板");
         stage.setWidth(800);
         stage.setHeight(600);
 
@@ -49,10 +49,10 @@ public class AdminPanel {
         root.setPadding(new Insets(15));
         root.setStyle("-fx-font-size: 12;");
 
-        Label titleLabel = new Label("Deck State");
+        Label titleLabel = new Label("牌组状态");
         titleLabel.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
 
-        statusLabel = new Label("Game state: waiting");
+        statusLabel = new Label("游戏状态：等待中");
         statusLabel.setStyle(
             "-fx-padding: 10;" +
             "-fx-background-color: #fff3cd;" +
@@ -61,13 +61,13 @@ public class AdminPanel {
         );
 
         HBox mainContent = new HBox(15);
-        VBox activeCardsBox = createCardsPanel("Active cards", activeCardsView = new ListView<>(), true);
-        VBox inactiveCardsBox = createCardsPanel("Inactive cards", inactiveCardsView = new ListView<>(), false);
+        VBox activeCardsBox = createCardsPanel("在场卡牌", activeCardsView = new ListView<>(), true);
+        VBox inactiveCardsBox = createCardsPanel("离场卡牌", inactiveCardsView = new ListView<>(), false);
         mainContent.getChildren().addAll(activeCardsBox, inactiveCardsBox);
         HBox.setHgrow(activeCardsBox, Priority.ALWAYS);
         HBox.setHgrow(inactiveCardsBox, Priority.ALWAYS);
 
-        Label infoLabel = new Label("Details:");
+        Label infoLabel = new Label("详细信息：");
         infoLabel.setStyle("-fx-font-weight: bold;");
 
         infoArea = new TextArea();
@@ -109,11 +109,11 @@ public class AdminPanel {
         listView.setPrefHeight(250);
         listView.setCellFactory(param -> new CardListCell(isActive));
 
-        Label countLabel = new Label("Count: 0");
+        Label countLabel = new Label("数量：0");
         countLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 11;");
 
         listView.getItems().addListener((javafx.collections.ListChangeListener<? super Card>) change ->
-            countLabel.setText("Count: " + listView.getItems().size())
+            countLabel.setText("数量：" + listView.getItems().size())
         );
 
         box.getChildren().addAll(titleLabel, listView, countLabel);
@@ -124,19 +124,19 @@ public class AdminPanel {
         HBox buttonBox = new HBox(10);
         buttonBox.setPadding(new Insets(10, 0, 0, 0));
 
-        Button refreshButton = new Button("Refresh");
+        Button refreshButton = new Button("刷新");
         refreshButton.setOnAction(e -> updateUI());
 
-        Button moveToActiveButton = new Button("Move To Active");
+        Button moveToActiveButton = new Button("移回在场");
         moveToActiveButton.setOnAction(e -> moveSelectedToActive());
 
-        Button moveToInactiveButton = new Button("Move To Inactive");
+        Button moveToInactiveButton = new Button("移出在场");
         moveToInactiveButton.setOnAction(e -> moveSelectedToInactive());
 
-        Button exportButton = new Button("Export");
+        Button exportButton = new Button("导出");
         exportButton.setOnAction(e -> exportState());
 
-        Button clearButton = new Button("Reset Inactive");
+        Button clearButton = new Button("重置离场");
         clearButton.setStyle("-fx-text-fill: #d32f2f;");
         clearButton.setOnAction(e -> clearInactiveCards());
 
@@ -212,21 +212,21 @@ public class AdminPanel {
     private void updateStatusLabel(GameState state) {
         String status;
         switch (state.getRoundState()) {
-            case IDLE -> status = "Idle";
-            case CARD_SELECTED -> status = "Card Selected";
-            case MUSIC_PLAYING -> status = "Music Playing";
-            case WAITING_RESULT -> status = "Waiting Result";
-            case ROUND_COMPLETE -> status = "Round Complete";
-            case REST_MUSIC -> status = "Rest Music";
-            case GAME_OVER -> status = "Game Over";
-            default -> status = "Unknown";
+            case IDLE -> status = "空闲";
+            case CARD_SELECTED -> status = "已选卡";
+            case MUSIC_PLAYING -> status = "播放中";
+            case WAITING_RESULT -> status = "等待结果";
+            case ROUND_COMPLETE -> status = "回合结束";
+            case REST_MUSIC -> status = "休息时间";
+            case GAME_OVER -> status = "游戏结束";
+            default -> status = "未知";
         }
 
         statusLabel.setText(String.format(
-            "State: %s | Round: %d/%d | Active: %d | Success: %.1f%%",
+            "状态：%s | 已进行：%d | 剩余：%d | 在场：%d | 成功率：%.1f%%",
             status,
             state.getCurrentRound(),
-            state.getTotalRounds(),
+            state.getRemainingRounds(),
             state.getCurrentDeck().getActiveCardCount(),
             state.getSuccessRate()
         ));
@@ -234,13 +234,14 @@ public class AdminPanel {
 
     private void updateInfoArea(GameState state) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Round: ").append(state.getCurrentRound()).append("/").append(state.getTotalRounds()).append('\n');
-        sb.append("Success: ").append(state.getSuccessCount()).append('\n');
-        sb.append("Failure: ").append(state.getFailureCount()).append('\n');
-        sb.append("Active cards: ").append(state.getCurrentDeck().getActiveCardCount()).append('\n');
-        sb.append("Inactive cards: ").append(state.getCurrentDeck().getInactiveCards().size()).append('\n');
+        sb.append("已进行回合：").append(state.getCurrentRound()).append('\n');
+        sb.append("剩余回合：").append(state.getRemainingRounds()).append('\n');
+        sb.append("成功：").append(state.getSuccessCount()).append('\n');
+        sb.append("失败：").append(state.getFailureCount()).append('\n');
+        sb.append("在场卡牌：").append(state.getCurrentDeck().getActiveCardCount()).append('\n');
+        sb.append("离场卡牌：").append(state.getCurrentDeck().getInactiveCards().size()).append('\n');
         if (state.getCurrentCard() != null) {
-            sb.append("Current card: ").append(state.getCurrentCard().getWorkName()).append('\n');
+            sb.append("当前卡牌：").append(state.getCurrentCard().getWorkName()).append('\n');
         }
         infoArea.setText(sb.toString());
     }
@@ -251,7 +252,7 @@ public class AdminPanel {
             gameEngine.getGameState().getCurrentDeck().addActiveCard(selectedCard);
             updateUI();
             inactiveCardsView.getSelectionModel().clearSelection();
-            showInfo("Card moved back to active.");
+            showInfo("已移回在场。");
         }
     }
 
@@ -261,14 +262,14 @@ public class AdminPanel {
             gameEngine.getGameState().getCurrentDeck().removeActiveCard(selectedCard);
             updateUI();
             activeCardsView.getSelectionModel().clearSelection();
-            showInfo("Card moved to inactive.");
+            showInfo("已移出在场。");
         }
     }
 
     private void clearInactiveCards() {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("Confirm");
-        alert.setContentText("Move all inactive cards back to active?");
+        alert.setTitle("确认");
+        alert.setContentText("是否将所有离场卡牌移回在场？");
 
         if (alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
             Deck deck = gameEngine.getGameState().getCurrentDeck();
@@ -276,26 +277,27 @@ public class AdminPanel {
                 deck.addActiveCard(card);
             }
             updateUI();
-            showInfo("Inactive cards reset.");
+            showInfo("离场卡牌已重置。");
         }
     }
 
     private void exportState() {
         GameState state = gameEngine.getGameState();
         StringBuilder sb = new StringBuilder();
-        sb.append("Round: ").append(state.getCurrentRound()).append("/").append(state.getTotalRounds()).append('\n');
-        sb.append("Success: ").append(state.getSuccessCount()).append('\n');
-        sb.append("Failure: ").append(state.getFailureCount()).append('\n');
+        sb.append("已进行回合：").append(state.getCurrentRound()).append('\n');
+        sb.append("剩余回合：").append(state.getRemainingRounds()).append('\n');
+        sb.append("成功：").append(state.getSuccessCount()).append('\n');
+        sb.append("失败：").append(state.getFailureCount()).append('\n');
         for (Card card : state.getCurrentDeck().getActiveCards()) {
             sb.append("- ").append(card.getWorkName()).append('\n');
         }
         infoArea.setText(sb.toString());
-        showInfo("State exported to panel.");
+        showInfo("状态已导出到面板。");
     }
 
     private void showInfo(String message) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Info");
+        alert.setTitle("提示");
         alert.setHeaderText(null);
         alert.setContentText(message);
         alert.showAndWait();

@@ -135,7 +135,7 @@ public class GameState {
      * 检查游戏是否结束
      */
     public boolean isGameOver() {
-        return currentDeck == null || !currentDeck.hasActiveCards() || currentRound >= totalRounds;
+        return currentDeck == null || !currentDeck.hasActiveCards();
     }
     
     /**
@@ -149,8 +149,21 @@ public class GameState {
      * 获取游戏进度（百分比）
      */
     public int getProgress() {
-        if (totalRounds == 0) return 0;
-        return (currentRound * 100) / totalRounds;
+        if (currentDeck == null || totalRounds == 0) {
+            return 0;
+        }
+        int completedCards = totalRounds - currentDeck.getActiveCardCount();
+        if (completedCards <= 0) {
+            return 0;
+        }
+        return Math.min(100, (completedCards * 100) / totalRounds);
+    }
+
+    public int getRemainingRounds() {
+        if (currentDeck == null) {
+            return 0;
+        }
+        return currentDeck.getActiveCardCount();
     }
     
     /**

@@ -7,6 +7,9 @@ import model.GameState;
 import model.Song;
 
 public class GameEngine {
+    private static final double REST_VOLUME_DB = -12.0;
+    private static final double REST_VOLUME_FACTOR = Math.pow(10.0, REST_VOLUME_DB / 20.0);
+
     private final GameState gameState;
     private final AudioPlayer audioPlayer;
     private final GameRules gameRules;
@@ -14,17 +17,28 @@ public class GameEngine {
     private GameListener listener;
     private Thread playbackThread;
     private long playbackSessionId;
+    private double normalPlaybackVolume;
+    private int currentPlaybackDurationSeconds;
 
     public interface GameListener {
         void onRoundStart(Card card);
+
         void onMusicStart(Song song);
+
         void onMusicComplete();
+
         void onMusicInterrupted();
+
         void onRoundComplete(GameState.Result result);
+
         void onAwaitingStart();
+
         void onRestMusicStart();
+
         void onRestMusicComplete();
+
         void onGameOver(GameState state);
+
         void onError(String error);
     }
 
@@ -32,6 +46,7 @@ public class GameEngine {
         this.audioPlayer = audioPlayer;
         this.gameRules = gameRules;
         this.gameState = new GameState();
+        this.normalPlaybackVolume = audioPlayer.getVolume();
     }
 
     public void initializeGame(Deck deck, int totalRounds) {
@@ -98,8 +113,10 @@ public class GameEngine {
 
     private void playMusicWithLimit(Song song) {
         try {
+            audioPlayer.setVolume(normalPlaybackVolume);
             gameState.startMusicPlayback();
             int duration = gameRules.getPlaybackDuration();
+            currentPlaybackDurationSeconds = duration;
             long sessionId = ++playbackSessionId;
 
             if (listener != null) {
@@ -110,7 +127,8 @@ public class GameEngine {
                 try {
                     audioPlayer.playLimited(song, duration);
                     Thread.sleep(duration * 1000L + 100L);
-                    if (sessionId != playbackSessionId || gameState.getRoundState() != GameState.RoundState.MUSIC_PLAYING) {
+                    if (sessionId != playbackSessionId
+                            || gameState.getRoundState() != GameState.RoundState.MUSIC_PLAYING) {
                         return;
                     }
                     gameState.musicPlaybackComplete();
@@ -147,7 +165,7 @@ public class GameEngine {
         audioPlayer.stop();
         gameState.submitResult(result);
         if (result == GameState.Result.FAILURE && gameState.getCurrentCard() != null
-            && gameRules.getFailureMode() == GameRules.FailureMode.SKIP) {
+                && gameRules.getFailureMode() == GameRules.FailureMode.SKIP) {
             gameState.getCurrentDeck().removeActiveCard(gameState.getCurrentCard());
         }
 
@@ -171,6 +189,7 @@ public class GameEngine {
 
             Song restSong = gameRules.getRestMusic();
             if (shouldPlayRestMusic() && restSong != null && restSong.fileExists()) {
+                audioPlayer.setVolume(normalPlaybackVolume * REST_VOLUME_FACTOR);
                 audioPlayer.play(restSong);
             }
         } catch (Exception e) {
@@ -182,11 +201,8 @@ public class GameEngine {
 
     private boolean shouldPlayRestMusic() {
         return gameRules.isRestMusicEnabled()
-            && gameRules.getRestIntervalRounds() > 0
-            && gameState.getCurrentRound() % gameRules.getRestIntervalRounds() == 0
-            && gameState.getCurrentRound() < gameState.getTotalRounds()
-            && gameState.getCurrentDeck() != null
-            && gameState.getCurrentDeck().hasActiveCards();
+                && gameState.getCurrentDeck() != null
+                && gameState.getCurrentDeck().hasActiveCards();
     }
 
     public void resumeFromRest() {
@@ -228,9 +244,48 @@ public class GameEngine {
         return gameState.getCurrentDeck();
     }
 
+    public void pauseCurrentMusic() {
+        audioPlayer.pause();
+    }
+
+    public void resumeCurrentMusic() {
+        audioPlayer.resume();
+    }
+
+    public boolean isCurrentMusicPlaying() {
+        return audioPlayer.isPlaying();
+    }
+
+    public boolean isCurrentMusicPaused() {
+        return audioPlayer.isPaused();
+    }
+
     public void dispose() {
         audioPlayer.dispose();
         cancelPlaybackThread();
+    }
+
+    public double getPlaybackVolume() {
+        return normalPlaybackVolume;
+    }
+
+    public void setPlaybackVolume(double volume) {
+        if (volume < 0.0 || volume > 1.0) {
+            throw new IllegalArgumentException("Volume must be between 0.0 and 1.0.");
+        }
+
+        normalPlaybackVolume = volume;
+
+        GameState.RoundState roundState = gameState.getRoundState();
+        if (roundState == GameState.RoundState.REST_MUSIC) {
+            audioPlayer.setVolume(volume * REST_VOLUME_FACTOR);
+        } else {
+            audioPlayer.setVolume(volume);
+        }
+    }
+
+    public int getCurrentPlaybackDurationSeconds() {
+        return currentPlaybackDurationSeconds;
     }
 
     private void cancelPlaybackThread() {

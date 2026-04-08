@@ -7,6 +7,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
@@ -24,8 +25,11 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,11 +38,17 @@ import java.nio.file.StandardCopyOption;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 
 public class DatasetImportDialog {
     private static final String CSV_HEADER = "image_name,work_name,songs,song_display_names";
@@ -78,7 +88,7 @@ public class DatasetImportDialog {
         stage.initModality(Modality.APPLICATION_MODAL);
         stage.setTitle("导入数据集");
         stage.setWidth(1180);
-        stage.setHeight(820);
+        stage.setHeight(960);
         stage.setScene(buildScene());
 
         refreshDatasetChoices(null);
@@ -169,6 +179,21 @@ public class DatasetImportDialog {
         Button useDatasetButton = createPrimaryButton("使用这个数据集");
         useDatasetButton.setOnAction(event -> applyDatasetSelection());
 
+        Button importPackageButton = new Button("导入数据包");
+        importPackageButton.setStyle(createSecondaryButtonStyle());
+        importPackageButton.setOnAction(event -> importDatasetPackage());
+
+        Button exportPackageButton = new Button("导出数据包");
+        exportPackageButton.setStyle(createSecondaryButtonStyle());
+        exportPackageButton.setOnAction(event -> exportDatasetPackage());
+
+        Button deleteDatasetButton = new Button("删除数据集");
+        deleteDatasetButton.setStyle(createSecondaryButtonStyle());
+        deleteDatasetButton.setOnAction(event -> deleteDataset());
+
+        HBox packageActionBar = new HBox(10, importPackageButton, exportPackageButton, deleteDatasetButton);
+        packageActionBar.setAlignment(Pos.CENTER_LEFT);
+
         worksListView.setPrefHeight(520);
         worksListView.getSelectionModel().selectedIndexProperty().addListener((obs, oldValue, newValue) -> {
             int index = newValue == null ? -1 : newValue.intValue();
@@ -182,6 +207,7 @@ public class DatasetImportDialog {
             createFieldBlock("已有数据集", "下拉选择后可直接编辑里面的作品。", datasetComboBox),
             createFieldBlock("新数据集名称", "没有的话就在这里新建。", newDatasetField),
             useDatasetButton,
+            packageActionBar,
             createFieldBlock("作品列表", "左侧选中某个作品即可进入编辑状态。", worksListView)
         );
         VBox.setVgrow(worksListView, Priority.ALWAYS);
@@ -317,7 +343,7 @@ public class DatasetImportDialog {
         Files.createDirectories(deckDirectory);
 
         List<String> names = new ArrayList<>();
-        try (var stream = Files.list(deckDirectory)) {
+        try (java.util.stream.Stream<Path> stream = Files.list(deckDirectory)) {
             stream.filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".csv"))
                 .sorted(Comparator.comparing(path -> path.getFileName().toString(), String.CASE_INSENSITIVE_ORDER))
                 .forEach(path -> names.add(stripExtension(path.getFileName().toString())));
@@ -507,6 +533,439 @@ public class DatasetImportDialog {
         } catch (Exception e) {
             showError("保存失败", e.getMessage());
         }
+    }
+
+    private void importDatasetPackage() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("导入数据包");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("ZIP 数据包", "*.zip"));
+        File packageFile = fileChooser.showOpenDialog(stage);
+        if (packageFile == null) {
+            return;
+        }
+
+        try {
+            Files.createDirectories(getDeckDirectory());
+            Files.createDirectories(Path.of(configManager.getImagesFolder()));
+            Files.createDirectories(Path.of(configManager.getMusicFolder()));
+
+            String importedDatasetName = importDatasetFromZip(packageFile.toPath());
+            loadDataset(importedDatasetName);
+            refreshDatasetChoices(importedDatasetName);
+            statusLabel.setText("数据包导入成功：" + importedDatasetName);
+            if (onSaved != null) {
+                onSaved.accept(importedDatasetName);
+            }
+        } catch (Exception e) {
+            showError("导入失败", e.getMessage());
+        }
+    }
+
+    private void exportDatasetPackage() {
+        try {
+            String datasetName = resolveDatasetNameForExport();
+            Path deckFile = getDeckFile(datasetName);
+            if (!Files.exists(deckFile)) {
+                throw new IllegalArgumentException("未找到数据集 CSV：" + deckFile.getFileName());
+            }
+
+            List<WorkEntry> works = readWorks(deckFile);
+            if (works.isEmpty()) {
+                throw new IllegalArgumentException("数据集为空，无法导出。");
+            }
+
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("导出数据包");
+            fileChooser.setInitialFileName(datasetName + ".zip");
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("ZIP 数据包", "*.zip"));
+            File targetFile = fileChooser.showSaveDialog(stage);
+            if (targetFile == null) {
+                return;
+            }
+
+            Path targetZip = ensureZipExtension(targetFile.toPath());
+            exportDatasetToZip(datasetName, works, targetZip);
+            statusLabel.setText("数据包导出成功：" + targetZip.getFileName());
+        } catch (Exception e) {
+            showError("导出失败", e.getMessage());
+        }
+    }
+
+    private void deleteDataset() {
+        try {
+            String datasetName = resolveDatasetNameForExport();
+            Path deckFile = getDeckFile(datasetName);
+            if (!Files.exists(deckFile)) {
+                throw new IllegalArgumentException("未找到数据集 CSV：" + deckFile.getFileName());
+            }
+
+            ButtonType csvOnlyButton = new ButtonType("仅删除 CSV");
+            ButtonType withAssetsButton = new ButtonType("删除 CSV + 独占资源");
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.initOwner(stage);
+            confirm.setTitle("删除数据集");
+            confirm.setHeaderText(null);
+            confirm.setContentText("确认删除数据集 \"" + datasetName + "\"？");
+            confirm.getButtonTypes().setAll(csvOnlyButton, withAssetsButton, ButtonType.CANCEL);
+
+            ButtonType decision = confirm.showAndWait().orElse(ButtonType.CANCEL);
+            if (decision == ButtonType.CANCEL) {
+                return;
+            }
+
+            boolean deleteExclusiveAssets = decision == withAssetsButton;
+            int deletedImages = 0;
+            int deletedSongs = 0;
+
+            if (deleteExclusiveAssets) {
+                Set<String> targetImages = new LinkedHashSet<>();
+                Set<String> targetSongs = new LinkedHashSet<>();
+                collectReferencedAssets(deckFile, targetImages, targetSongs);
+
+                Set<String> otherImages = new LinkedHashSet<>();
+                Set<String> otherSongs = new LinkedHashSet<>();
+                collectReferencedAssetsFromOtherDecks(deckFile, otherImages, otherSongs);
+
+                deletedImages = deleteUnreferencedAssets(
+                    targetImages,
+                    otherImages,
+                    Path.of(configManager.getImagesFolder())
+                );
+                deletedSongs = deleteUnreferencedAssets(
+                    targetSongs,
+                    otherSongs,
+                    Path.of(configManager.getMusicFolder())
+                );
+            }
+
+            Files.delete(deckFile);
+
+            if (datasetName.equals(activeDatasetName)) {
+                activeDatasetName = null;
+                currentWorks.clear();
+                refreshWorksList();
+                resetEditorForNewWork();
+            }
+
+            refreshDatasetChoices(null);
+            if (deleteExclusiveAssets) {
+                statusLabel.setText(String.format(
+                    "数据集已删除：%s | 删除图片 %d | 删除歌曲 %d",
+                    datasetName, deletedImages, deletedSongs
+                ));
+            } else {
+                statusLabel.setText("数据集已删除：" + datasetName);
+            }
+            if (onSaved != null) {
+                onSaved.accept(null);
+            }
+        } catch (Exception e) {
+            showError("删除失败", e.getMessage());
+        }
+    }
+
+    private void collectReferencedAssets(Path deckFile, Set<String> imageNames, Set<String> songNames) throws IOException {
+        List<WorkEntry> works = readWorks(deckFile);
+        for (WorkEntry work : works) {
+            if (work.imageName != null && !work.imageName.isBlank()) {
+                imageNames.add(work.imageName);
+            }
+            for (String songFileName : work.songFileNames) {
+                if (songFileName != null && !songFileName.isBlank()) {
+                    songNames.add(songFileName);
+                }
+            }
+        }
+    }
+
+    private void collectReferencedAssetsFromOtherDecks(
+        Path deletedDeckFile,
+        Set<String> imageNames,
+        Set<String> songNames
+    ) throws IOException {
+        Path deckDirectory = getDeckDirectory();
+        if (!Files.isDirectory(deckDirectory)) {
+            return;
+        }
+
+        try (var stream = Files.list(deckDirectory)) {
+            List<Path> deckFiles = stream
+                .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".csv"))
+                .filter(path -> !path.equals(deletedDeckFile))
+                .collect(Collectors.toList());
+
+            for (Path deckFile : deckFiles) {
+                collectReferencedAssets(deckFile, imageNames, songNames);
+            }
+        }
+    }
+
+    private int deleteUnreferencedAssets(Set<String> targetAssets, Set<String> referencedByOtherDecks, Path baseDirectory) throws IOException {
+        int deletedCount = 0;
+        for (String assetName : targetAssets) {
+            if (referencedByOtherDecks.contains(assetName)) {
+                continue;
+            }
+            Path assetPath = baseDirectory.resolve(assetName);
+            if (Files.deleteIfExists(assetPath)) {
+                deletedCount++;
+            }
+        }
+        return deletedCount;
+    }
+
+    private String resolveDatasetNameForExport() {
+        if (activeDatasetName != null && !activeDatasetName.isBlank()) {
+            return activeDatasetName;
+        }
+
+        String selected = datasetComboBox.getValue();
+        if (selected != null && !selected.isBlank()) {
+            return sanitizeName(selected);
+        }
+
+        throw new IllegalArgumentException("请先选择数据集。");
+    }
+
+    private Path ensureZipExtension(Path targetPath) {
+        String fileName = targetPath.getFileName().toString();
+        if (fileName.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+            return targetPath;
+        }
+        Path parent = targetPath.getParent();
+        String zippedName = fileName + ".zip";
+        return parent == null ? Path.of(zippedName) : parent.resolve(zippedName);
+    }
+
+    private void exportDatasetToZip(String datasetName, List<WorkEntry> works, Path targetZip) throws IOException {
+        Path deckFile = getDeckFile(datasetName);
+        if (!Files.exists(deckFile)) {
+            throw new IOException("未找到数据集 CSV：" + deckFile.getFileName());
+        }
+
+        Set<String> imageNames = new LinkedHashSet<>();
+        Set<String> songNames = new LinkedHashSet<>();
+        for (WorkEntry work : works) {
+            if (work.imageName != null && !work.imageName.isBlank()) {
+                imageNames.add(work.imageName);
+            }
+            for (String songFileName : work.songFileNames) {
+                if (songFileName != null && !songFileName.isBlank()) {
+                    songNames.add(songFileName);
+                }
+            }
+        }
+
+        try (ZipOutputStream zipOutputStream = new ZipOutputStream(Files.newOutputStream(targetZip))) {
+            addFileToZip(zipOutputStream, deckFile, "decks/" + datasetName + ".csv");
+
+            Path imagesDir = Path.of(configManager.getImagesFolder());
+            for (String imageName : imageNames) {
+                Path imagePath = imagesDir.resolve(imageName);
+                if (!Files.isRegularFile(imagePath)) {
+                    throw new IOException("缺少图片资源：" + imageName);
+                }
+                addFileToZip(zipOutputStream, imagePath, "images/" + imageName);
+            }
+
+            Path musicDir = Path.of(configManager.getMusicFolder());
+            for (String songName : songNames) {
+                Path songPath = musicDir.resolve(songName);
+                if (!Files.isRegularFile(songPath)) {
+                    throw new IOException("缺少音频资源：" + songName);
+                }
+                addFileToZip(zipOutputStream, songPath, "music/" + songName);
+            }
+        }
+    }
+
+    private void addFileToZip(ZipOutputStream zipOutputStream, Path sourceFile, String zipEntryName) throws IOException {
+        ZipEntry zipEntry = new ZipEntry(zipEntryName.replace('\\', '/'));
+        zipOutputStream.putNextEntry(zipEntry);
+        Files.copy(sourceFile, zipOutputStream);
+        zipOutputStream.closeEntry();
+    }
+
+    private String importDatasetFromZip(Path zipPath) throws IOException {
+        try (ZipFile zipFile = new ZipFile(zipPath.toFile())) {
+            ZipEntry csvEntry = findCsvEntry(zipFile);
+            if (csvEntry == null) {
+                throw new IOException("ZIP 中未找到 CSV 数据集文件。");
+            }
+
+            String sourceDatasetName = sanitizeName(stripExtension(Path.of(csvEntry.getName()).getFileName().toString()));
+            String targetDatasetName = resolveUniqueDatasetName(sourceDatasetName);
+
+            List<WorkEntry> importedWorks;
+            try (InputStream csvStream = zipFile.getInputStream(csvEntry)) {
+                importedWorks = readWorks(csvStream);
+            }
+            if (importedWorks.isEmpty()) {
+                throw new IOException("CSV 中没有可用作品数据。");
+            }
+
+            Path imagesDir = Path.of(configManager.getImagesFolder());
+            Path musicDir = Path.of(configManager.getMusicFolder());
+
+            Map<String, ZipEntry> entriesByFullName = new HashMap<>();
+            Map<String, List<ZipEntry>> entriesByBaseName = new HashMap<>();
+            zipFile.stream()
+                .filter(entry -> !entry.isDirectory())
+                .forEach(entry -> {
+                    String normalized = normalizeEntryPath(entry.getName());
+                    entriesByFullName.put(normalized, entry);
+                    entriesByFullName.put(normalized.toLowerCase(Locale.ROOT), entry);
+                    String baseName = Path.of(normalized).getFileName().toString().toLowerCase(Locale.ROOT);
+                    entriesByBaseName.computeIfAbsent(baseName, key -> new ArrayList<>()).add(entry);
+                });
+
+            List<WorkEntry> rewrittenWorks = new ArrayList<>();
+            for (WorkEntry work : importedWorks) {
+                String importedImageName = copyAssetFromZip(
+                    zipFile,
+                    entriesByFullName,
+                    entriesByBaseName,
+                    work.imageName,
+                    imagesDir,
+                    targetDatasetName
+                );
+
+                List<String> importedSongNames = new ArrayList<>();
+                for (String songName : work.songFileNames) {
+                    importedSongNames.add(copyAssetFromZip(
+                        zipFile,
+                        entriesByFullName,
+                        entriesByBaseName,
+                        songName,
+                        musicDir,
+                        targetDatasetName
+                    ));
+                }
+
+                rewrittenWorks.add(new WorkEntry(importedImageName, work.workName, importedSongNames, work.songDisplayNames));
+            }
+
+            writeWorks(getDeckFile(targetDatasetName), rewrittenWorks);
+            return targetDatasetName;
+        }
+    }
+
+    private ZipEntry findCsvEntry(ZipFile zipFile) {
+        List<ZipEntry> csvEntries = zipFile.stream()
+            .filter(entry -> !entry.isDirectory())
+            .filter(entry -> entry.getName().toLowerCase(Locale.ROOT).endsWith(".csv"))
+            .sorted(Comparator.comparing(ZipEntry::getName, String.CASE_INSENSITIVE_ORDER))
+            .collect(Collectors.toList());
+        if (csvEntries.isEmpty()) {
+            return null;
+        }
+        return csvEntries.get(0);
+    }
+
+    private String resolveUniqueDatasetName(String baseName) throws IOException {
+        String candidate = sanitizeName(baseName);
+        int counter = 2;
+        while (Files.exists(getDeckFile(candidate))) {
+            candidate = sanitizeName(baseName) + "_" + counter;
+            counter++;
+        }
+        return candidate;
+    }
+
+    private List<WorkEntry> readWorks(InputStream inputStream) throws IOException {
+        List<WorkEntry> works = new ArrayList<>();
+        List<String> lines = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                lines.add(line);
+            }
+        }
+
+        if (!lines.isEmpty()) {
+            lines.set(0, stripBom(lines.get(0)));
+        }
+        for (int i = 1; i < lines.size(); i++) {
+            String line = lines.get(i).trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            List<String> parts = parseCsvLine(line);
+            if (parts.size() < 3) {
+                continue;
+            }
+            String imageName = parts.get(0).trim();
+            String workName = parts.get(1).trim();
+            List<String> songFileNames = splitPipeValues(parts.get(2));
+            List<String> songDisplayNames = parts.size() >= 4 ? splitPipeValues(parts.get(3)) : new ArrayList<>();
+            works.add(new WorkEntry(imageName, workName, songFileNames, songDisplayNames));
+        }
+        return works;
+    }
+
+    private String copyAssetFromZip(
+        ZipFile zipFile,
+        Map<String, ZipEntry> entriesByFullName,
+        Map<String, List<ZipEntry>> entriesByBaseName,
+        String referencedName,
+        Path targetDirectory,
+        String datasetName
+    ) throws IOException {
+        if (referencedName == null || referencedName.isBlank()) {
+            throw new IOException("CSV 中存在空的资源引用。");
+        }
+
+        ZipEntry sourceEntry = findAssetEntry(entriesByFullName, entriesByBaseName, referencedName);
+        if (sourceEntry == null) {
+            throw new IOException("ZIP 中未找到资源：" + referencedName);
+        }
+
+        String originalName = Path.of(sourceEntry.getName()).getFileName().toString();
+        String extension = "";
+        int dotIndex = originalName.lastIndexOf('.');
+        if (dotIndex >= 0) {
+            extension = originalName.substring(dotIndex).toLowerCase(Locale.ROOT);
+        }
+        String baseName = dotIndex >= 0 ? originalName.substring(0, dotIndex) : originalName;
+        Path targetPath = buildUniqueAssetPath(targetDirectory, datasetName, baseName, extension);
+
+        try (InputStream inputStream = zipFile.getInputStream(sourceEntry)) {
+            Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+        }
+        return targetPath.getFileName().toString();
+    }
+
+    private ZipEntry findAssetEntry(
+        Map<String, ZipEntry> entriesByFullName,
+        Map<String, List<ZipEntry>> entriesByBaseName,
+        String referencedName
+    ) {
+        String normalizedReference = normalizeEntryPath(referencedName);
+        ZipEntry exact = entriesByFullName.get(normalizedReference);
+        if (exact != null) {
+            return exact;
+        }
+
+        String lowerReference = normalizedReference.toLowerCase(Locale.ROOT);
+        exact = entriesByFullName.get(lowerReference);
+        if (exact != null) {
+            return exact;
+        }
+
+        String baseName = Path.of(normalizedReference).getFileName().toString().toLowerCase(Locale.ROOT);
+        List<ZipEntry> matches = entriesByBaseName.get(baseName);
+        if (matches == null || matches.isEmpty()) {
+            return null;
+        }
+        return matches.get(0);
+    }
+
+    private String normalizeEntryPath(String value) {
+        String normalized = value.replace('\\', '/');
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        return normalized;
     }
 
     private String resolveDatasetNameForSave() {

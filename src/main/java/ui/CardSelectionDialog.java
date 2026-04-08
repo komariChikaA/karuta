@@ -23,8 +23,10 @@ import model.Deck;
 
 import java.io.FileInputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class CardSelectionDialog {
@@ -32,6 +34,7 @@ public class CardSelectionDialog {
     private final Deck deck;
     private final int cardLimit;
     private final Set<Card> selectedCards = new LinkedHashSet<>();
+    private final Map<Card, CardTile> cardTiles = new LinkedHashMap<>();
     private final Label selectionLabel = new Label();
 
     private boolean confirmed;
@@ -73,9 +76,8 @@ public class CardSelectionDialog {
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(24));
         root.setStyle(
-            "-fx-background-color: linear-gradient(to bottom right, #f8f1e6, #eef4fb);" +
-            "-fx-font-family: 'Microsoft YaHei';"
-        );
+                "-fx-background-color: linear-gradient(to bottom right, #f8f1e6, #eef4fb);" +
+                        "-fx-font-family: 'Microsoft YaHei';");
 
         VBox header = new VBox(8);
         Label titleLabel = new Label("选择本局参赛卡牌");
@@ -93,8 +95,12 @@ public class CardSelectionDialog {
         cardsPane.setVgap(16);
         cardsPane.setPadding(new Insets(4));
 
+        cardTiles.clear();
+
         for (Card card : deck.getCards()) {
-            cardsPane.getChildren().add(createCardTile(card));
+            CardTile tile = createCardTile(card);
+            cardTiles.put(card, tile);
+            cardsPane.getChildren().add(tile.root());
         }
 
         ScrollPane scrollPane = new ScrollPane(cardsPane);
@@ -110,14 +116,14 @@ public class CardSelectionDialog {
         autoPickButton.setOnAction(event -> {
             selectedCards.clear();
             preselectCards();
-            rebuild();
+            refreshSelectionView();
         });
 
         Button clearButton = new Button("清空");
         clearButton.setStyle(createSecondaryButtonStyle());
         clearButton.setOnAction(event -> {
             selectedCards.clear();
-            rebuild();
+            refreshSelectionView();
         });
 
         Button cancelButton = new Button("取消");
@@ -138,7 +144,7 @@ public class CardSelectionDialog {
         return new Scene(root);
     }
 
-    private VBox createCardTile(Card card) {
+    private CardTile createCardTile(Card card) {
         VBox tile = new VBox(10);
         tile.setPrefWidth(180);
         tile.setPadding(new Insets(14));
@@ -150,7 +156,7 @@ public class CardSelectionDialog {
         imageView.setPreserveRatio(true);
         imageView.setSmooth(true);
 
-        Label imageFallback = new Label("No Image");
+        Label imageFallback = new Label("无图片");
         imageFallback.setStyle("-fx-font-size: 12; -fx-text-fill: #8b93a3;");
         if (card.getImageFile() != null && card.getImageFile().exists()) {
             try (FileInputStream inputStream = new FileInputStream(card.getImageFile())) {
@@ -164,13 +170,12 @@ public class CardSelectionDialog {
 
         Label selectedBadge = new Label("✓");
         selectedBadge.setStyle(
-            "-fx-background-color: #2e7d4f;" +
-            "-fx-text-fill: white;" +
-            "-fx-font-size: 16;" +
-            "-fx-font-weight: bold;" +
-            "-fx-padding: 4 10;" +
-            "-fx-background-radius: 999;"
-        );
+                "-fx-background-color: #2e7d4f;" +
+                        "-fx-text-fill: white;" +
+                        "-fx-font-size: 16;" +
+                        "-fx-font-weight: bold;" +
+                        "-fx-padding: 4 10;" +
+                        "-fx-background-radius: 999;");
         selectedBadge.setVisible(selectedCards.contains(card));
         selectedBadge.setManaged(selectedCards.contains(card));
 
@@ -190,15 +195,12 @@ public class CardSelectionDialog {
         updateCardTileStyle(tile, selectedCards.contains(card));
         tile.setOnMouseClicked(event -> {
             if (toggleCardSelection(card)) {
-                boolean selected = selectedCards.contains(card);
-                selectedBadge.setVisible(selected);
-                selectedBadge.setManaged(selected);
-                updateCardTileStyle(tile, selected);
+                refreshCardTile(card);
             }
         });
 
         tile.getChildren().addAll(imageStack, titleLabel, songCountLabel);
-        return tile;
+        return new CardTile(tile, selectedBadge);
     }
 
     private boolean toggleCardSelection(Card card) {
@@ -215,26 +217,43 @@ public class CardSelectionDialog {
         return true;
     }
 
+    private void refreshSelectionView() {
+        refreshSelectionLabel();
+        for (Card card : deck.getCards()) {
+            refreshCardTile(card);
+        }
+    }
+
+    private void refreshCardTile(Card card) {
+        CardTile tile = cardTiles.get(card);
+        if (tile == null) {
+            return;
+        }
+
+        boolean selected = selectedCards.contains(card);
+        tile.badge().setVisible(selected);
+        tile.badge().setManaged(selected);
+        updateCardTileStyle(tile.root(), selected);
+    }
+
     private void updateCardTileStyle(VBox tile, boolean selected) {
         if (selected) {
             tile.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.96);" +
-                "-fx-background-radius: 18;" +
-                "-fx-border-radius: 18;" +
-                "-fx-border-color: #2e7d4f;" +
-                "-fx-border-width: 2;" +
-                "-fx-effect: dropshadow(gaussian, rgba(46,125,79,0.20), 18, 0.18, 0, 6);"
-            );
+                    "-fx-background-color: rgba(255,255,255,0.96);" +
+                            "-fx-background-radius: 18;" +
+                            "-fx-border-radius: 18;" +
+                            "-fx-border-color: #2e7d4f;" +
+                            "-fx-border-width: 2;" +
+                            "-fx-effect: dropshadow(gaussian, rgba(46,125,79,0.20), 18, 0.18, 0, 6);");
             tile.setScaleX(1.03);
             tile.setScaleY(1.03);
         } else {
             tile.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.88);" +
-                "-fx-background-radius: 18;" +
-                "-fx-border-radius: 18;" +
-                "-fx-border-color: rgba(36,50,74,0.08);" +
-                "-fx-border-width: 1;"
-            );
+                    "-fx-background-color: rgba(255,255,255,0.88);" +
+                            "-fx-background-radius: 18;" +
+                            "-fx-border-radius: 18;" +
+                            "-fx-border-color: rgba(36,50,74,0.08);" +
+                            "-fx-border-width: 1;");
             tile.setScaleX(1.0);
             tile.setScaleY(1.0);
         }
@@ -262,33 +281,26 @@ public class CardSelectionDialog {
         stage.close();
     }
 
-    private void rebuild() {
-        stage.setScene(buildScene());
-        stage.sizeToScene();
-        stage.setWidth(Math.max(stage.getWidth(), 1120));
-        stage.setHeight(Math.max(stage.getHeight(), 760));
-    }
-
     private String createPrimaryButtonStyle() {
         return "-fx-background-color: #2e7d4f;" +
-            "-fx-text-fill: white;" +
-            "-fx-font-size: 14;" +
-            "-fx-font-weight: bold;" +
-            "-fx-padding: 12 22;" +
-            "-fx-background-radius: 12;" +
-            "-fx-cursor: hand;";
+                "-fx-text-fill: white;" +
+                "-fx-font-size: 14;" +
+                "-fx-font-weight: bold;" +
+                "-fx-padding: 12 22;" +
+                "-fx-background-radius: 12;" +
+                "-fx-cursor: hand;";
     }
 
     private String createSecondaryButtonStyle() {
         return "-fx-background-color: white;" +
-            "-fx-text-fill: #31415f;" +
-            "-fx-font-size: 13;" +
-            "-fx-font-weight: bold;" +
-            "-fx-padding: 10 18;" +
-            "-fx-background-radius: 12;" +
-            "-fx-border-radius: 12;" +
-            "-fx-border-color: #d8deea;" +
-            "-fx-cursor: hand;";
+                "-fx-text-fill: #31415f;" +
+                "-fx-font-size: 13;" +
+                "-fx-font-weight: bold;" +
+                "-fx-padding: 10 18;" +
+                "-fx-background-radius: 12;" +
+                "-fx-border-radius: 12;" +
+                "-fx-border-color: #d8deea;" +
+                "-fx-cursor: hand;";
     }
 
     private void showError(String title, String message) {
@@ -301,5 +313,8 @@ public class CardSelectionDialog {
     }
 
     public record SelectionResult(List<Card> selectedCards, List<Card> unselectedCards) {
+    }
+
+    private record CardTile(VBox root, Label badge) {
     }
 }
