@@ -14,6 +14,7 @@
 
 - 当前 macOS 环境已成功生成 `target/package/KarutaJukebox-1.0.0.dmg`。
 - Windows `exe` 不能在 macOS 上直接产出，必须在 Windows 环境执行相同的打包命令。
+- 打包前会把 `src/main/resources/config` 复制到 `target/config`，让安装包内也保留一个可读的配置目录。
 
 ## macOS 打包为 dmg
 

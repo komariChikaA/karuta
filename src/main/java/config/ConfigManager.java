@@ -10,6 +10,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.URISyntaxException;
 import java.net.JarURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -72,6 +73,11 @@ public class ConfigManager {
             return sourceResourcesPath.getCanonicalFile();
         }
 
+        File codeSourceDirectory = resolveFromCodeSource(requestedBaseDir);
+        if (codeSourceDirectory != null) {
+            return codeSourceDirectory.getCanonicalFile();
+        }
+
         ClassLoader classLoader = ConfigManager.class.getClassLoader();
         File bundledDirectory = resolveBundledConfigDirectory(classLoader, requestedBaseDir);
         if (bundledDirectory != null) {
@@ -79,6 +85,45 @@ public class ConfigManager {
         }
 
         throw new FileNotFoundException("Config directory not found: " + requestedBaseDir);
+    }
+
+    /**
+     * 优先查找 jar 或应用程序所在目录旁边的 config 目录，适配 jpackage 安装包。
+     */
+    private File resolveFromCodeSource(String requestedBaseDir) throws IOException {
+        try {
+            URL codeSourceUrl = ConfigManager.class.getProtectionDomain().getCodeSource().getLocation();
+            if (codeSourceUrl == null) {
+                return null;
+            }
+
+            File codeSource = new File(codeSourceUrl.toURI());
+            File rootDirectory = codeSource.isFile() ? codeSource.getParentFile() : codeSource;
+            if (rootDirectory == null) {
+                return null;
+            }
+
+            File siblingConfig = new File(rootDirectory, requestedBaseDir);
+            if (containsConfigFile(siblingConfig)) {
+                return siblingConfig;
+            }
+
+            if (requestedBaseDir.startsWith("config/")) {
+                File nestedConfig = new File(rootDirectory, requestedBaseDir);
+                if (nestedConfig.isDirectory()) {
+                    return nestedConfig;
+                }
+            }
+
+            File directConfigFile = new File(rootDirectory, CONFIG_FILE);
+            if (directConfigFile.isFile()) {
+                return directConfigFile.getParentFile();
+            }
+
+            return null;
+        } catch (URISyntaxException e) {
+            throw new IOException("Failed to resolve config from code source.", e);
+        }
     }
 
     /**

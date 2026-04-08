@@ -32,6 +32,11 @@ jobs:
       - name: Build JAR
         run: mvn -B clean package
 
+      - name: Stage config directory
+        run: |
+          rm -rf target/config
+          cp -R src/main/resources/config target/config
+
       - name: Create dmg
         run: |
           rm -rf target/package
@@ -85,9 +90,39 @@ jobs:
         run: |
           choco install wixtoolset -y --no-progress
 
+      - name: Add WiX to PATH
+        shell: powershell
+        run: |
+          $candidates = @(
+            'C:\Program Files (x86)\WiX Toolset v3.11\bin',
+            'C:\Program Files\WiX Toolset v3.11\bin'
+          )
+
+          $wixBin = $candidates | Where-Object { Test-Path (Join-Path $_ 'candle.exe') } | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($wixBin)) {
+            throw 'WiX Toolset bin directory was not found.'
+          }
+
+          "WIX_BIN=$wixBin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$wixBin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Verify WiX tools
+        shell: powershell
+        run: |
+          where.exe candle
+          where.exe light
+
       - name: Build JAR
         shell: powershell
         run: mvn -B clean package
+
+      - name: Stage config directory
+        shell: powershell
+        run: |
+          if (Test-Path target/config) {
+            Remove-Item -Recurse -Force target/config
+          }
+          Copy-Item -Recurse src/main/resources/config target/config
 
       - name: Create exe
         shell: powershell
