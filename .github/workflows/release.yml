@@ -93,12 +93,11 @@ jobs:
       - name: Add WiX to PATH
         shell: powershell
         run: |
-          $candidates = @(
-            'C:\Program Files (x86)\WiX Toolset v3.11\bin',
-            'C:\Program Files\WiX Toolset v3.11\bin'
-          )
+          $wixBin = Get-ChildItem -Path 'C:\Program Files (x86)', 'C:\Program Files' -Directory -Filter 'WiX Toolset*' -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName 'bin' } |
+            Where-Object { Test-Path (Join-Path $_ 'candle.exe') } |
+            Select-Object -First 1
 
-          $wixBin = $candidates | Where-Object { Test-Path (Join-Path $_ 'candle.exe') } | Select-Object -First 1
           if ([string]::IsNullOrWhiteSpace($wixBin)) {
             throw 'WiX Toolset bin directory was not found.'
           }
