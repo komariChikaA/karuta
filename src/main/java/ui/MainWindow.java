@@ -45,7 +45,8 @@ public class MainWindow extends Application {
             showDeckSelectionScreen();
         } catch (Exception e) {
             e.printStackTrace();
-            showErrorDialog("配置加载失败", e.getMessage());
+            StartupLogger.logException("MainWindow.start failed", e);
+            showErrorDialog("配置加载失败", e.getMessage() + "\n日志文件: " + StartupLogger.getLogFilePath());
         }
 
         primaryStage.show();

@@ -1,8 +1,8 @@
 package ui;
 
 import javafx.application.Application;
-import java.io.PrintWriter;
-import java.io.StringWriter;
+
+import javax.swing.JOptionPane;
 
 /**
  * 纯 Java 启动器，避免把 {@link MainWindow} 直接作为 JAR/jpackage 入口。
@@ -12,12 +12,21 @@ public final class Launcher {
     }
 
     public static void main(String[] args) {
+        StartupLogger.log("Launcher started.");
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             throwable.printStackTrace();
-            StringWriter buffer = new StringWriter();
-            throwable.printStackTrace(new PrintWriter(buffer));
-            System.err.println(buffer);
+            StartupLogger.logException("Uncaught exception in thread: " + thread.getName(), throwable);
         });
-        Application.launch(MainWindow.class, args);
+
+        try {
+            Application.launch(MainWindow.class, args);
+        } catch (Throwable throwable) {
+            StartupLogger.logException("Application.launch failed", throwable);
+            JOptionPane.showMessageDialog(
+                    null,
+                    "应用启动失败。\n日志文件: " + StartupLogger.getLogFilePath(),
+                    "Karuta 启动失败",
+                    JOptionPane.ERROR_MESSAGE);
+        }
     }
 }
