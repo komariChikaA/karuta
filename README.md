@@ -3,6 +3,16 @@
 Karuta Jukebox 是一个基于 JavaFX 的桌面应用，用于组织“听歌猜作品”对局。  
 它提供数据集管理、开局选卡、回合控制、休息音乐和后台管理能力。
 
+## 项目结构
+
+- `src/main/java/audio`：音频播放封装。
+- `src/main/java/config`：配置读取和数据集解析。
+- `src/main/java/game`：对局引擎与规则。
+- `src/main/java/model`：卡牌、牌组、歌曲等领域模型。
+- `src/main/java/ui`：JavaFX 界面、窗口和对话框。
+- `src/main/resources/config`：内置默认配置入口。
+- `target/`：Maven 构建输出和打包产物。
+
 ## 核心功能
 
 - 通过 CSV 管理数据集（每个作品支持多首歌曲）。
@@ -30,6 +40,8 @@ mvn clean javafx:run
 ```bash
 mvn clean package
 ```
+
+如果你要生成安装包，请查看 [docs/PACKAGING.md](./docs/PACKAGING.md)。当前这台 macOS 机器已经可以直接产出 `dmg`，`exe` 需要在 Windows 环境中打包。启动入口已经改为 `ui.Launcher`，避免直接把 `Application` 子类作为 JAR 入口。
 
 ## 目录约定
 
