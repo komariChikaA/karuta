@@ -167,7 +167,10 @@ jobs:
             --name KarutaJukebox `
             --app-version $v `
             --dest target/package `
-            --java-options "--enable-native-access=ALL-UNNAMED"
+            --java-options "--enable-native-access=ALL-UNNAMED" `
+            --win-per-user-install `
+            --win-dir-chooser `
+            --win-menu
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
