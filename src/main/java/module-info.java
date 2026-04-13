@@ -6,6 +6,7 @@ module karuta.jukebox {
     requires transitive javafx.controls;
     requires javafx.fxml;
     requires javafx.media;
+    requires org.tomlj;
 
     exports audio;
     exports config;

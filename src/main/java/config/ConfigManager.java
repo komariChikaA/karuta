@@ -24,11 +24,36 @@ import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
+import org.tomlj.Toml;
+import org.tomlj.TomlParseResult;
+import org.tomlj.TomlTable;
+
 /**
  * 加载项目配置，并将数据集 CSV 转换为领域对象。
  */
 public class ConfigManager {
-    private static final String CONFIG_FILE = "config.txt";
+    private static final String CONFIG_FILE = "config.toml";
+    private static final String LEGACY_CONFIG_FILE = "config.txt";
+
+    private static final String DEFAULT_CONFIG_TOML = """
+            # 歌牌点歌系统配置
+
+            [paths]
+            music = "music/"
+            images = "images/"
+            decks = "decks/"
+
+            [audio]
+            rest_music = "rest.mp3"
+            min_duration = 10
+            max_duration = 30
+
+            [game]
+            default_deck = "decks/deck1.csv"
+            failure_mode = "PASS"
+            enable_rest_music = true
+            auto_continue_after_rest = false
+            """;
 
     private final File baseDir;
     private final Map<String, String> rawConfig;
@@ -42,11 +67,12 @@ public class ConfigManager {
     private String failureMode;
 
     /**
-     * 解析配置根目录，然后加载并校验配置文件。
+     * 解析配置根目录，确保配置文件和子目录存在，然后加载并校验。
      */
     public ConfigManager(String baseDir) throws IOException {
         this.baseDir = resolveBaseDir(baseDir);
         this.rawConfig = new HashMap<>();
+        ensureConfigExists();
         loadConfigFile();
         validateConfig();
     }
@@ -210,7 +236,7 @@ public class ConfigManager {
     }
 
     /**
-     * 尝试从 classpath 中解析配置目录，支持目录资源和单个 config.txt 文件资源。
+     * 尝试从 classpath 中解析配置目录，支持目录资源和配置文件资源。
      */
     private File resolveBundledConfigDirectory(ClassLoader classLoader, String requestedBaseDir) throws IOException {
         for (String resourceName : buildResourceCandidates(requestedBaseDir)) {
@@ -243,7 +269,7 @@ public class ConfigManager {
     }
 
     /**
-     * 生成 classpath 的候选资源名，兼容目录和 config.txt 两种布局。
+     * 生成 classpath 的候选资源名，兼容目录和配置文件两种布局。
      */
     private List<String> buildResourceCandidates(String requestedBaseDir) {
         List<String> candidates = new ArrayList<>();
@@ -305,14 +331,99 @@ public class ConfigManager {
     }
 
     /**
-     * 检查目录中是否存在预期的配置入口文件。
+     * 检查目录中是否存在配置文件（TOML 或旧版 txt）。
      */
     private boolean containsConfigFile(File directory) {
-        return directory.isDirectory() && new File(directory, CONFIG_FILE).isFile();
+        if (!directory.isDirectory()) {
+            return false;
+        }
+        return new File(directory, CONFIG_FILE).isFile()
+                || new File(directory, LEGACY_CONFIG_FILE).isFile();
     }
 
     /**
-     * 从 UTF-8 配置文件读取键值对，并跳过空行和注释行。
+     * 首次运行时自动生成配置文件和子目录；如果存在旧版 config.txt，自动迁移。
+     */
+    private void ensureConfigExists() throws IOException {
+        File configFile = new File(baseDir, CONFIG_FILE);
+        File legacyFile = new File(baseDir, LEGACY_CONFIG_FILE);
+
+        if (!configFile.exists()) {
+            if (legacyFile.exists()) {
+                migrateFromLegacy(legacyFile, configFile);
+            } else {
+                Files.writeString(configFile.toPath(), DEFAULT_CONFIG_TOML, StandardCharsets.UTF_8);
+            }
+        }
+
+        String[] subDirs = {"music", "images", "decks"};
+        for (String dir : subDirs) {
+            File subDir = new File(baseDir, dir);
+            if (!subDir.exists()) {
+                Files.createDirectories(subDir.toPath());
+            }
+        }
+    }
+
+    /**
+     * 将旧版 key=value 格式的 config.txt 迁移为 TOML 格式。
+     */
+    private void migrateFromLegacy(File legacyFile, File tomlFile) throws IOException {
+        Map<String, String> legacy = new HashMap<>();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(legacyFile), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty() || line.startsWith("#")) {
+                    continue;
+                }
+                String[] parts = line.split("=", 2);
+                if (parts.length == 2) {
+                    legacy.put(parts[0].trim(), parts[1].trim());
+                }
+            }
+        }
+
+        String toml = String.format("""
+                # 歌牌点歌系统配置（从 config.txt 自动迁移）
+
+                [paths]
+                music = "%s"
+                images = "%s"
+                decks = "decks/"
+
+                [audio]
+                rest_music = "%s"
+                min_duration = %s
+                max_duration = %s
+
+                [game]
+                default_deck = "%s"
+                failure_mode = "%s"
+                enable_rest_music = %s
+                auto_continue_after_rest = %s
+                """,
+                stripConfigPrefix(legacy.getOrDefault("music_folder", "music/")),
+                stripConfigPrefix(legacy.getOrDefault("images_folder", "images/")),
+                legacy.getOrDefault("rest_music", "rest.mp3"),
+                legacy.getOrDefault("min_duration", "10"),
+                legacy.getOrDefault("max_duration", "30"),
+                stripConfigPrefix(legacy.getOrDefault("default_deck", "decks/deck1.csv")),
+                legacy.getOrDefault("failure_mode", "PASS"),
+                legacy.getOrDefault("enable_rest_music", "true"),
+                legacy.getOrDefault("auto_continue_after_rest", "false"));
+
+        Files.writeString(tomlFile.toPath(), toml, StandardCharsets.UTF_8);
+    }
+
+    private String stripConfigPrefix(String path) {
+        String normalized = path.replace('\\', '/');
+        return normalized.startsWith("config/") ? normalized.substring("config/".length()) : normalized;
+    }
+
+    /**
+     * 使用 tomlj 解析 TOML 配置文件，并扁平化为 dotted key map。
      */
     private void loadConfigFile() throws IOException {
         File configFile = new File(baseDir, CONFIG_FILE);
@@ -320,34 +431,38 @@ public class ConfigManager {
             throw new FileNotFoundException("Config file not found: " + configFile.getAbsolutePath());
         }
 
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(new FileInputStream(configFile), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                line = line.trim();
-                if (line.isEmpty() || line.startsWith("#")) {
-                    continue;
-                }
+        TomlParseResult toml = Toml.parse(configFile.toPath());
+        if (toml.hasErrors()) {
+            throw new IOException("TOML parse error in " + configFile.getAbsolutePath()
+                    + ": " + toml.errors().get(0).toString());
+        }
 
-                String[] parts = line.split("=", 2);
-                if (parts.length == 2) {
-                    rawConfig.put(parts[0].trim(), parts[1].trim());
-                }
+        flattenToml(toml, "", rawConfig);
+    }
+
+    private void flattenToml(TomlTable table, String prefix, Map<String, String> target) {
+        for (String key : table.keySet()) {
+            String fullKey = prefix.isEmpty() ? key : prefix + "." + key;
+            Object value = table.get(key);
+            if (value instanceof TomlTable nested) {
+                flattenToml(nested, fullKey, target);
+            } else {
+                target.put(fullKey, String.valueOf(value));
             }
         }
     }
 
     /**
-     * 在读取原始配置后解析路径并校验时长参数。
+     * 在读取 TOML 配置后解析路径并校验时长参数。
      */
     private void validateConfig() {
-        musicFolder = resolveConfiguredPath(getConfigValue("music_folder", "config/music/")).getPath();
-        imagesFolder = resolveConfiguredPath(getConfigValue("images_folder", "config/images/")).getPath();
-        restMusic = getConfigValue("rest_music", "rest.mp3");
-        minDuration = Integer.parseInt(getConfigValue("min_duration", "10"));
-        maxDuration = Integer.parseInt(getConfigValue("max_duration", "30"));
-        defaultDeck = resolveConfiguredPath(getConfigValue("default_deck", "config/decks/deck1.csv")).getPath();
-        failureMode = getConfigValue("failure_mode", "PASS");
+        musicFolder = resolveConfiguredPath(getTomlValue("paths.music", "music/")).getPath();
+        imagesFolder = resolveConfiguredPath(getTomlValue("paths.images", "images/")).getPath();
+        restMusic = getTomlValue("audio.rest_music", "rest.mp3");
+        minDuration = Integer.parseInt(getTomlValue("audio.min_duration", "10"));
+        maxDuration = Integer.parseInt(getTomlValue("audio.max_duration", "30"));
+        defaultDeck = resolveConfiguredPath(getTomlValue("game.default_deck", "decks/deck1.csv")).getPath();
+        failureMode = getTomlValue("game.failure_mode", "PASS");
 
         if (minDuration <= 0 || maxDuration <= 0 || minDuration > maxDuration) {
             throw new IllegalArgumentException(
@@ -355,25 +470,19 @@ public class ConfigManager {
         }
     }
 
-    private String getConfigValue(String key, String defaultValue) {
-        return rawConfig.getOrDefault(key, defaultValue);
+    private String getTomlValue(String dottedKey, String defaultValue) {
+        return rawConfig.getOrDefault(dottedKey, defaultValue);
     }
 
     /**
-     * 在需要时相对于当前配置目录解析配置路径。
+     * 将配置中的相对路径解析为基于配置目录的绝对路径。
      */
     private File resolveConfiguredPath(String configuredPath) {
         File directPath = new File(configuredPath);
-        if (directPath.exists()) {
+        if (directPath.isAbsolute() && directPath.exists()) {
             return directPath;
         }
-
-        String normalized = configuredPath.replace('\\', '/');
-        if (normalized.startsWith("config/")) {
-            return new File(baseDir, normalized.substring("config/".length()));
-        }
-
-        return new File(baseDir, normalized);
+        return new File(baseDir, configuredPath);
     }
 
     /**

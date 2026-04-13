@@ -1,0 +1,17 @@
+# 歌牌点歌系统配置
+
+[paths]
+music = "music/"
+images = "images/"
+decks = "decks/"
+
+[audio]
+rest_music = "rest.mp3"
+min_duration = 10
+max_duration = 30
+
+[game]
+default_deck = "decks/deck1.csv"
+failure_mode = "PASS"
+enable_rest_music = true
+auto_continue_after_rest = false
