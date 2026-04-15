@@ -14,6 +14,7 @@ public class GameState {
     public enum RoundState {
         IDLE,
         CARD_SELECTED,
+        EMPTY_CARD,
         MUSIC_PLAYING,
         WAITING_RESULT,
         ROUND_COMPLETE,
@@ -81,15 +82,20 @@ public class GameState {
      * 从在场卡牌中随机选一张，并从该卡牌中随机选一首歌。
      */
     public void selectCard() {
-        if (currentDeck == null || !currentDeck.hasActiveCards()) {
+        if (currentDeck == null || !currentDeck.hasActiveRealCards()) {
             roundState = RoundState.GAME_OVER;
             return;
         }
 
         currentCard = currentDeck.getRandomActiveCard();
         if (currentCard != null) {
-            currentSong = currentCard.getRandomSong();
-            roundState = RoundState.CARD_SELECTED;
+            if (currentCard.isEmptyCard()) {
+                currentSong = currentCard.getRandomSong();
+                roundState = RoundState.EMPTY_CARD;
+            } else {
+                currentSong = currentCard.getRandomSong();
+                roundState = RoundState.CARD_SELECTED;
+            }
         }
     }
 
@@ -141,7 +147,7 @@ public class GameState {
      * 判断当前游戏是否已经耗尽所有在场卡牌。
      */
     public boolean isGameOver() {
-        return currentDeck == null || !currentDeck.hasActiveCards();
+        return currentDeck == null || !currentDeck.hasActiveRealCards();
     }
 
     /**
@@ -158,7 +164,7 @@ public class GameState {
         if (currentDeck == null || totalRounds == 0) {
             return 0;
         }
-        int completedCards = totalRounds - currentDeck.getActiveCardCount();
+        int completedCards = totalRounds - currentDeck.getActiveRealCardCount();
         if (completedCards <= 0) {
             return 0;
         }
@@ -172,7 +178,7 @@ public class GameState {
         if (currentDeck == null) {
             return 0;
         }
-        return currentDeck.getActiveCardCount();
+        return currentDeck.getActiveRealCardCount();
     }
 
     /**

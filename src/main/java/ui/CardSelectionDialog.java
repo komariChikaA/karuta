@@ -5,6 +5,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -50,12 +51,14 @@ public class CardSelectionDialog {
     private final Label selectionLabel = new Label();
     private final Label emptyStateLabel = new Label(
             "\u5F53\u524D\u6CA1\u6709\u5339\u914D\u7684\u5361\u9762\u6807\u9898");
+    private final Label emptyCardModeLabel = new Label();
 
     private FlowPane cardsPane;
     private TextField searchField;
     private ComboBox<SortMode> sortComboBox;
     private Spinner<Integer> randomCountSpinner;
     private Button randomPickButton;
+    private CheckBox emptyCardModeCheckBox;
 
     private boolean confirmed;
 
@@ -85,7 +88,7 @@ public class CardSelectionDialog {
     public SelectionResult showAndWait() {
         stage.showAndWait();
         if (!confirmed) {
-            return new SelectionResult(List.of(), List.of());
+            return new SelectionResult(List.of(), List.of(), List.of());
         }
 
         List<Card> selected = new ArrayList<>(selectedCards);
@@ -95,7 +98,7 @@ public class CardSelectionDialog {
                 unselected.add(card);
             }
         }
-        return new SelectionResult(selected, unselected);
+        return new SelectionResult(selected, unselected, createEmptySourceCards(unselected));
     }
 
     /**
@@ -185,7 +188,15 @@ public class CardSelectionDialog {
 
         actionRow.getChildren().addAll(randomLabel, randomCountSpinner, randomPickButton, pickVisibleButton,
                 clearButton);
-        filterPanel.getChildren().addAll(searchRow, actionRow);
+
+        emptyCardModeCheckBox = new CheckBox("\u7A7A\u724C\u5F00\u59CB\u6A21\u5F0F");
+        emptyCardModeCheckBox.setStyle("-fx-font-size: 13; -fx-font-weight: bold; -fx-text-fill: #31415f;");
+        emptyCardModeCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> updateEmptyCardModeLabel());
+
+        emptyCardModeLabel.setWrapText(true);
+        emptyCardModeLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #6d7686;");
+
+        filterPanel.getChildren().addAll(searchRow, actionRow, emptyCardModeCheckBox, emptyCardModeLabel);
 
         cardsPane = new FlowPane();
         cardsPane.setHgap(16);
@@ -499,6 +510,7 @@ public class CardSelectionDialog {
         selectionLabel.setText(
                 "\u5DF2\u9009 " + selectedCards.size() + " / " + cardLimit + " \u5F20\uff0c\u5F53\u524D\u663E\u793A "
                         + visibleCount + " / " + allCards.size() + " \u5F20\u3002");
+        updateEmptyCardModeLabel();
     }
 
     /**
@@ -509,8 +521,62 @@ public class CardSelectionDialog {
             showError("\u672A\u9009\u62E9\u5361\u724C", "\u8BF7\u81F3\u5C11\u9009\u62E9 1 \u5F20\u5361\u724C\u518D\u5F00\u59CB\u3002");
             return;
         }
+        if (isEmptyCardModeEnabled() && getAvailableEmptyCardCount() < selectedCards.size()) {
+            showError(
+                    "\u7A7A\u724C\u6570\u91CF\u4E0D\u8DB3",
+                    "\u7A7A\u724C\u5F00\u59CB\u6A21\u5F0F\u9700\u8981\u4ECE\u672A\u9009\u4E2D\u5361\u724C\u91CC\u968F\u673A\u62BD\u53D6 "
+                            + selectedCards.size() + " \u5F20\u7A7A\u724C\uff0c\u4F46\u5F53\u524D\u53EA\u5269 "
+                            + getAvailableEmptyCardCount() + " \u5F20\u672A\u9009\u4E2D\u5361\u724C\u3002");
+            return;
+        }
         confirmed = true;
         stage.close();
+    }
+
+    private boolean isEmptyCardModeEnabled() {
+        return emptyCardModeCheckBox != null && emptyCardModeCheckBox.isSelected();
+    }
+
+    private int getAvailableEmptyCardCount() {
+        return allCards.size() - selectedCards.size();
+    }
+
+    private void updateEmptyCardModeLabel() {
+        if (emptyCardModeLabel == null) {
+            return;
+        }
+
+        if (!isEmptyCardModeEnabled()) {
+            emptyCardModeLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #6d7686;");
+            emptyCardModeLabel.setText(
+                    "\u5F00\u542F\u540E\uff0c\u4F1A\u4ECE\u672A\u9009\u4E2D\u5361\u724C\u91CC\u968F\u673A\u52A0\u5165\u4E0E\u5DF2\u9009\u6570\u91CF\u76F8\u540C\u7684\u7A7A\u724C\u3002");
+            return;
+        }
+
+        int selectedCount = selectedCards.size();
+        int availableCount = getAvailableEmptyCardCount();
+        if (availableCount >= selectedCount) {
+            emptyCardModeLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #2e7d4f;");
+            emptyCardModeLabel.setText(
+                    "\u672C\u5C40\u5C06\u4ECE\u672A\u9009\u4E2D\u5361\u724C\u91CC\u968F\u673A\u62BD\u53D6 " + selectedCount
+                            + " \u5F20\u4F5C\u4E3A\u7A7A\u724C\u3002");
+            return;
+        }
+
+        emptyCardModeLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #c65b48;");
+        emptyCardModeLabel.setText(
+                "\u5269\u4F59\u5361\u6C60\u4E0D\u8DB3\uff1A\u5F53\u524D\u5DF2\u9009 " + selectedCount + " \u5F20\uff0c\u4F46\u672A\u9009\u4E2D\u5361\u724C\u53EA\u5269 "
+                        + availableCount + " \u5F20\uff0c\u65E0\u6CD5\u751F\u6210\u540C\u7B49\u6570\u91CF\u7684\u7A7A\u724C\u3002");
+    }
+
+    private List<Card> createEmptySourceCards(List<Card> unselectedCards) {
+        if (!isEmptyCardModeEnabled() || unselectedCards.isEmpty()) {
+            return List.of();
+        }
+
+        List<Card> shuffledCards = new ArrayList<>(unselectedCards);
+        Collections.shuffle(shuffledCards);
+        return new ArrayList<>(shuffledCards.subList(0, selectedCards.size()));
     }
 
     private String createPrimaryButtonStyle() {
@@ -595,7 +661,7 @@ public class CardSelectionDialog {
     /**
      * Returns the final selected and unselected cards.
      */
-    public record SelectionResult(List<Card> selectedCards, List<Card> unselectedCards) {
+    public record SelectionResult(List<Card> selectedCards, List<Card> unselectedCards, List<Card> emptySourceCards) {
     }
 
     /**

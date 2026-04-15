@@ -51,11 +51,13 @@ final class DatasetPrintPdfExporter {
     private static final Color CARD_BORDER = new Color(220, 224, 230);
     private static final Color CARD_SHADOW = new Color(0, 0, 0, 22);
     private static final Color PLACEHOLDER_COLOR = new Color(120, 129, 145);
+    private static final Color TITLE_COLOR = new Color(42, 52, 71);
+    private static final Color TITLE_SECONDARY = new Color(118, 126, 142);
 
     private DatasetPrintPdfExporter() {
     }
 
-    static void export(Path targetPdf, List<PrintableCard> cards) throws IOException {
+    static void export(Path targetPdf, List<PrintableCard> cards, PrintMode printMode) throws IOException {
         if (cards == null || cards.isEmpty()) {
             throw new IllegalArgumentException("数据集为空，无法导出打印 PDF。");
         }
@@ -66,10 +68,10 @@ final class DatasetPrintPdfExporter {
             Files.createDirectories(parent);
         }
 
-        writePdf(absoluteTarget, cards);
+        writePdf(absoluteTarget, cards, printMode == null ? PrintMode.STANDARD : printMode);
     }
 
-    private static void writePdf(Path targetPdf, List<PrintableCard> cards) throws IOException {
+    private static void writePdf(Path targetPdf, List<PrintableCard> cards, PrintMode printMode) throws IOException {
         int pageCount = (cards.size() + CARDS_PER_PAGE - 1) / CARDS_PER_PAGE;
         int objectCount = 2 + pageCount * 3;
         List<Long> offsets = new ArrayList<>(Collections.nCopies(objectCount + 1, 0L));
@@ -86,7 +88,7 @@ final class DatasetPrintPdfExporter {
             for (int pageIndex = 0; pageIndex < pageCount; pageIndex++) {
                 int startIndex = pageIndex * CARDS_PER_PAGE;
                 int endIndex = Math.min(cards.size(), startIndex + CARDS_PER_PAGE);
-                BufferedImage pageImage = renderPage(cards.subList(startIndex, endIndex));
+                BufferedImage pageImage = renderPage(cards.subList(startIndex, endIndex), printMode);
                 byte[] jpegBytes = encodeJpeg(pageImage);
 
                 int pageObjectNumber = 3 + pageIndex * 3;
@@ -179,7 +181,7 @@ final class DatasetPrintPdfExporter {
         writeAscii(outputStream, "\nendobj\n");
     }
 
-    private static BufferedImage renderPage(List<PrintableCard> cards) {
+    private static BufferedImage renderPage(List<PrintableCard> cards, PrintMode printMode) {
         BufferedImage pageImage = new BufferedImage(PAGE_WIDTH_PX, PAGE_HEIGHT_PX, BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = pageImage.createGraphics();
         try {
@@ -193,7 +195,7 @@ final class DatasetPrintPdfExporter {
                 int row = index / 2;
                 int x = layout.startX + column * (layout.cardWidth + CARD_GAP_PX);
                 int y = layout.startY + row * (layout.cardHeight + CARD_GAP_PX);
-                drawCard(graphics, cards.get(index), x, y, layout.cardWidth, layout.cardHeight);
+                drawCard(graphics, cards.get(index), x, y, layout.cardWidth, layout.cardHeight, printMode);
             }
         } finally {
             graphics.dispose();
@@ -216,7 +218,15 @@ final class DatasetPrintPdfExporter {
         return new CardLayout(startX, startY, cardWidth, cardHeight);
     }
 
-    private static void drawCard(Graphics2D graphics, PrintableCard card, int x, int y, int width, int height) {
+    private static void drawCard(
+        Graphics2D graphics,
+        PrintableCard card,
+        int x,
+        int y,
+        int width,
+        int height,
+        PrintMode printMode
+    ) {
         graphics.setColor(CARD_SHADOW);
         graphics.fillRoundRect(x + 14, y + 18, width, height, CARD_CORNER_RADIUS_PX, CARD_CORNER_RADIUS_PX);
 
@@ -226,10 +236,84 @@ final class DatasetPrintPdfExporter {
         graphics.setStroke(new BasicStroke(4f));
         graphics.drawRoundRect(x, y, width, height, CARD_CORNER_RADIUS_PX, CARD_CORNER_RADIUS_PX);
 
+        if (printMode == PrintMode.ALBUM) {
+            drawAlbumCard(graphics, card, x, y, width, height);
+            return;
+        }
+
         Shape previousClip = graphics.getClip();
         graphics.setClip(new RoundRectangle2D.Float(x, y, width, height, CARD_CORNER_RADIUS_PX, CARD_CORNER_RADIUS_PX));
         drawCardImage(graphics, card.imagePath(), x, y, width, height);
         graphics.setClip(previousClip);
+    }
+
+    private static void drawAlbumCard(Graphics2D graphics, PrintableCard card, int x, int y, int width, int height) {
+        int horizontalPadding = Math.max(34, width / 14);
+        int topPadding = Math.max(34, height / 18);
+        int bottomPadding = Math.max(30, height / 18);
+        int titleGap = Math.max(22, height / 36);
+        int titleAreaHeight = Math.max(160, height / 3);
+        int imageAreaHeight = Math.max(1, height - topPadding - bottomPadding - titleGap - titleAreaHeight);
+        int imageSize = Math.max(1, Math.min(width - horizontalPadding * 2, imageAreaHeight));
+
+        int imageX = x + (width - imageSize) / 2;
+        int imageY = y + topPadding;
+        int titleX = x + horizontalPadding;
+        int titleY = imageY + imageSize + titleGap;
+        int titleWidth = width - horizontalPadding * 2;
+
+        graphics.setColor(new Color(246, 248, 252));
+        graphics.fillRoundRect(imageX, imageY, imageSize, imageSize, 28, 28);
+
+        Shape previousClip = graphics.getClip();
+        graphics.setClip(new RoundRectangle2D.Float(imageX, imageY, imageSize, imageSize, 28, 28));
+        drawCardImage(graphics, card.imagePath(), imageX, imageY, imageSize, imageSize);
+        graphics.setClip(previousClip);
+
+        graphics.setColor(new Color(228, 232, 239));
+        graphics.setStroke(new BasicStroke(2.5f));
+        graphics.drawRoundRect(imageX, imageY, imageSize, imageSize, 28, 28);
+
+        drawCardTitle(graphics, card.title(), titleX, titleY, titleWidth, titleAreaHeight);
+    }
+
+    private static void drawCardTitle(Graphics2D graphics, String title, int x, int y, int width, int height) {
+        String normalizedTitle = title == null || title.isBlank() ? "Untitled" : title.trim();
+        int maxFontSize = Math.max(34, width / 11);
+        int minFontSize = Math.max(18, width / 20);
+        TitleLayout titleLayout = null;
+
+        for (int fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 2) {
+            Font candidateFont = new Font("Microsoft YaHei", Font.BOLD, fontSize);
+            TitleLayout candidateLayout = createTitleLayout(graphics, normalizedTitle, candidateFont, width, 4, false);
+            if (candidateLayout.totalHeight() <= height && !candidateLayout.truncated()) {
+                titleLayout = candidateLayout;
+                break;
+            }
+            if (titleLayout == null || candidateLayout.totalHeight() <= height) {
+                titleLayout = candidateLayout;
+            }
+        }
+
+        if (titleLayout == null) {
+            Font fallbackFont = new Font("Microsoft YaHei", Font.BOLD, minFontSize);
+            titleLayout = createTitleLayout(graphics, normalizedTitle, fallbackFont, width, 4, true);
+        } else if (titleLayout.totalHeight() > height || titleLayout.truncated()) {
+            Font fallbackFont = titleLayout.font();
+            titleLayout = createTitleLayout(graphics, normalizedTitle, fallbackFont, width, 4, true);
+        }
+
+        FontMetrics titleMetrics = graphics.getFontMetrics(titleLayout.font());
+        int totalTextHeight = titleLayout.totalHeight();
+        int currentY = y + Math.max(titleMetrics.getAscent(), (height - totalTextHeight) / 2 + titleMetrics.getAscent());
+
+        graphics.setColor(TITLE_COLOR);
+        graphics.setFont(titleLayout.font());
+        for (String line : titleLayout.lines()) {
+            int lineX = x + (width - titleMetrics.stringWidth(line)) / 2;
+            graphics.drawString(line, lineX, currentY);
+            currentY += titleMetrics.getHeight();
+        }
     }
 
     private static void drawCardImage(Graphics2D graphics, Path imagePath, int x, int y, int width, int height) {
@@ -434,10 +518,151 @@ final class DatasetPrintPdfExporter {
         outputStream.write(ascii(value));
     }
 
-    record PrintableCard(Path imagePath) {
+    enum PrintMode {
+        STANDARD("标准打印模式"),
+        ALBUM("专辑打印模式");
+
+        private final String label;
+
+        PrintMode(String label) {
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
+    }
+
+    record PrintableCard(Path imagePath, String title) {
     }
 
     private record CardLayout(int startX, int startY, int cardWidth, int cardHeight) {
+    }
+
+    private record TitleLayout(Font font, List<String> lines, boolean truncated, int lineHeight) {
+        private int totalHeight() {
+            return lines.size() * lineHeight;
+        }
+    }
+
+    private record WrappedLines(List<String> lines, boolean truncated) {
+    }
+
+    private static List<String> wrapText(Graphics2D graphics, String text, Font font, int maxWidth, int maxLines) {
+        return wrapText(graphics, text, font, maxWidth, maxLines, true).lines();
+    }
+
+    private static TitleLayout createTitleLayout(
+        Graphics2D graphics,
+        String text,
+        Font font,
+        int maxWidth,
+        int maxLines,
+        boolean allowTruncation
+    ) {
+        WrappedLines wrappedLines = wrapText(graphics, text, font, maxWidth, maxLines, allowTruncation);
+        FontMetrics metrics = graphics.getFontMetrics(font);
+        return new TitleLayout(font, wrappedLines.lines(), wrappedLines.truncated(), metrics.getHeight());
+    }
+
+    private static WrappedLines wrapText(
+        Graphics2D graphics,
+        String text,
+        Font font,
+        int maxWidth,
+        int maxLines,
+        boolean allowTruncation
+    ) {
+        if (text == null || text.isBlank()) {
+            return new WrappedLines(List.of(""), false);
+        }
+
+        graphics.setFont(font);
+        FontMetrics metrics = graphics.getFontMetrics(font);
+        String[] words = text.trim().split("\\s+");
+        List<String> lines = new ArrayList<>();
+
+        if (words.length == 1) {
+            return breakLongWord(metrics, words[0], maxWidth, maxLines, allowTruncation);
+        }
+
+        String currentLine = "";
+        for (String word : words) {
+            String candidate = currentLine.isEmpty() ? word : currentLine + " " + word;
+            if (metrics.stringWidth(candidate) <= maxWidth) {
+                currentLine = candidate;
+                continue;
+            }
+
+            if (!currentLine.isEmpty()) {
+                lines.add(currentLine);
+                if (lines.size() >= maxLines) {
+                    return allowTruncation
+                        ? truncateLastLine(metrics, lines, maxWidth)
+                        : new WrappedLines(lines, true);
+                }
+                currentLine = word;
+            } else {
+                WrappedLines brokenWord = breakLongWord(metrics, word, maxWidth, maxLines - lines.size(), allowTruncation);
+                lines.addAll(brokenWord.lines());
+                if (lines.size() >= maxLines) {
+                    return allowTruncation
+                        ? truncateLastLine(metrics, lines, maxWidth)
+                        : new WrappedLines(lines, true);
+                }
+                currentLine = "";
+            }
+        }
+
+        if (!currentLine.isEmpty() && lines.size() < maxLines) {
+            lines.add(currentLine);
+        }
+        if (allowTruncation) {
+            return truncateLastLine(metrics, lines, maxWidth);
+        }
+        return new WrappedLines(lines, false);
+    }
+
+    private static WrappedLines breakLongWord(
+        FontMetrics metrics,
+        String word,
+        int maxWidth,
+        int maxLines,
+        boolean allowTruncation
+    ) {
+        List<String> lines = new ArrayList<>();
+        String remaining = word;
+        while (!remaining.isEmpty() && lines.size() < maxLines) {
+            int splitIndex = remaining.length();
+            while (splitIndex > 1 && metrics.stringWidth(remaining.substring(0, splitIndex)) > maxWidth) {
+                splitIndex--;
+            }
+            lines.add(remaining.substring(0, splitIndex));
+            remaining = remaining.substring(splitIndex);
+        }
+        if (allowTruncation) {
+            return truncateLastLine(metrics, lines, maxWidth);
+        }
+        return new WrappedLines(lines, !remaining.isEmpty());
+    }
+
+    private static WrappedLines truncateLastLine(FontMetrics metrics, List<String> lines, int maxWidth) {
+        if (lines.isEmpty()) {
+            return new WrappedLines(lines, false);
+        }
+        int lastIndex = lines.size() - 1;
+        String originalLastLine = lines.get(lastIndex);
+        String lastLine = originalLastLine;
+        String ellipsis = "...";
+        while (!lastLine.isEmpty() && metrics.stringWidth(lastLine + ellipsis) > maxWidth) {
+            lastLine = lastLine.substring(0, lastLine.length() - 1);
+        }
+        if (!lastLine.equals(originalLastLine)) {
+            lines.set(lastIndex, lastLine + ellipsis);
+            return new WrappedLines(lines, true);
+        }
+        return new WrappedLines(lines, false);
     }
 
     private static final class CountingOutputStream extends FilterOutputStream {

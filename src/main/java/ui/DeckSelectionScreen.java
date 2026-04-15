@@ -449,15 +449,25 @@ public class DeckSelectionScreen {
                 return;
             }
 
-            Deck limitedDeck = deck.createDeckFromCards(selectionResult.selectedCards());
             Set<Card> selectedCards = new LinkedHashSet<>(selectionResult.selectedCards());
+            Set<Card> excludedRestCards = new LinkedHashSet<>(selectedCards);
+            excludedRestCards.addAll(selectionResult.emptySourceCards());
+
+            Deck limitedDeck = new Deck(deck.getDeckName(), deck.getConfigFile());
+            for (Card selectedCard : selectionResult.selectedCards()) {
+                limitedDeck.addCard(selectedCard);
+            }
+            for (Card emptySourceCard : selectionResult.emptySourceCards()) {
+                limitedDeck.addCard(emptySourceCard.createEmptyVariant());
+            }
+
             List<Song> restSongs = deck.getCards().stream()
-                    .filter(card -> !selectedCards.contains(card))
+                    .filter(card -> !excludedRestCards.contains(card))
                     .flatMap(card -> card.getSongs().stream())
                     .toList();
             mainWindow.startGame(
                     limitedDeck,
-                    limitedDeck.getCardCount(),
+                    selectionResult.selectedCards().size(),
                     restMusicCheckBox.isSelected(),
                     failureModeComboBox.getValue(),
                     restSongs);

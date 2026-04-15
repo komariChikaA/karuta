@@ -132,6 +132,8 @@ public class GameEngine {
         Song song = gameState.getCurrentSong();
         if (song != null) {
             playMusicWithLimit(song);
+        } else if (currentCard.isEmptyCard()) {
+            currentPlaybackDurationSeconds = 0;
         }
     }
 
@@ -196,6 +198,9 @@ public class GameEngine {
     public void submitRoundResult(GameState.Result result) {
         cancelPlaybackThread();
         audioPlayer.stop();
+        if (gameState.getCurrentCard() != null && gameState.getCurrentCard().isEmptyCard()) {
+            result = GameState.Result.SUCCESS;
+        }
         gameState.submitResult(result);
         if (result == GameState.Result.FAILURE && gameState.getCurrentCard() != null
                 && gameRules.getFailureMode() == GameRules.FailureMode.SKIP) {
@@ -241,7 +246,7 @@ public class GameEngine {
     private boolean shouldPlayRestMusic() {
         return gameRules.isRestMusicEnabled()
                 && gameState.getCurrentDeck() != null
-                && gameState.getCurrentDeck().hasActiveCards();
+                && gameState.getCurrentDeck().hasActiveRealCards();
     }
 
     /**

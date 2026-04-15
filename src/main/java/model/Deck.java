@@ -153,10 +153,26 @@ public class Deck {
     }
 
     /**
+     * Returns the number of active non-empty cards still in play.
+     */
+    public int getActiveRealCardCount() {
+        return (int) activeCards.stream()
+                .filter(card -> !card.isEmptyCard())
+                .count();
+    }
+
+    /**
      * 判断是否至少还有一张卡牌在场。
      */
     public boolean hasActiveCards() {
         return !activeCards.isEmpty();
+    }
+
+    /**
+     * Returns whether at least one non-empty card is still active.
+     */
+    public boolean hasActiveRealCards() {
+        return activeCards.stream().anyMatch(card -> !card.isEmptyCard());
     }
 
     /**

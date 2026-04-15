@@ -14,6 +14,7 @@ public class Card {
     private String workName;
     private List<Song> songs;
     private boolean isActive;
+    private boolean emptyCard;
 
     private static final Random RANDOM = new Random();
 
@@ -25,6 +26,20 @@ public class Card {
         this.workName = workName;
         this.songs = new ArrayList<>();
         this.isActive = true;
+        this.emptyCard = false;
+    }
+
+    /**
+     * Creates a playable empty-card variant that keeps the original artwork and metadata.
+     */
+    public Card createEmptyVariant() {
+        Card emptyVariant = new Card(imageName + "#empty", workName);
+        emptyVariant.setImageFile(imageFile);
+        emptyVariant.emptyCard = true;
+        for (Song song : songs) {
+            emptyVariant.addSong(song);
+        }
+        return emptyVariant;
     }
 
     /**
@@ -106,6 +121,10 @@ public class Card {
 
     public void setActive(boolean active) {
         isActive = active;
+    }
+
+    public boolean isEmptyCard() {
+        return emptyCard;
     }
 
     @Override

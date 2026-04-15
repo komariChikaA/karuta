@@ -9,6 +9,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
@@ -108,6 +109,24 @@ public class DatasetImportDialog {
         }
     }
 
+    private DatasetPrintPdfExporter.PrintMode choosePrintMode() {
+        ChoiceDialog<DatasetPrintPdfExporter.PrintMode> dialog = new ChoiceDialog<>(
+            DatasetPrintPdfExporter.PrintMode.STANDARD,
+            DatasetPrintPdfExporter.PrintMode.STANDARD,
+            DatasetPrintPdfExporter.PrintMode.ALBUM
+        );
+        dialog.initOwner(stage);
+        dialog.setTitle("选择打印模式");
+        dialog.setHeaderText("请选择 PDF 打印模式");
+        dialog.setContentText("打印模式");
+        return dialog.showAndWait().orElse(null);
+    }
+
+    private String buildPrintPdfFileName(String datasetName, DatasetPrintPdfExporter.PrintMode printMode) {
+        String suffix = printMode == DatasetPrintPdfExporter.PrintMode.ALBUM ? "-album-print-a4.pdf" : "-print-a4.pdf";
+        return datasetName + suffix;
+    }
+
     /**
      * Exports the current dataset into an A4-ready PDF with four cards per page.
      */
@@ -124,9 +143,14 @@ public class DatasetImportDialog {
                 throw new IllegalArgumentException("数据集为空，无法导出打印 PDF。");
             }
 
+            DatasetPrintPdfExporter.PrintMode printMode = choosePrintMode();
+            if (printMode == null) {
+                return;
+            }
+
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle("导出打印 PDF");
-            fileChooser.setInitialFileName(datasetName + "-print-a4.pdf");
+            fileChooser.setInitialFileName(buildPrintPdfFileName(datasetName, printMode));
             fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF 文件", "*.pdf"));
             File targetFile = fileChooser.showSaveDialog(stage);
             if (targetFile == null) {
@@ -139,7 +163,7 @@ public class DatasetImportDialog {
             Task<Void> exportTask = new Task<>() {
                 @Override
                 protected Void call() throws Exception {
-                    DatasetPrintPdfExporter.export(targetPdf, buildPrintableCards(works));
+                    DatasetPrintPdfExporter.export(targetPdf, buildPrintableCards(works), printMode);
                     return null;
                 }
             };
@@ -880,7 +904,7 @@ public class DatasetImportDialog {
             Path imagePath = work.imageName == null || work.imageName.isBlank()
                 ? null
                 : imagesDirectory.resolve(work.imageName);
-            printableCards.add(new DatasetPrintPdfExporter.PrintableCard(imagePath));
+            printableCards.add(new DatasetPrintPdfExporter.PrintableCard(imagePath, work.workName));
         }
         return printableCards;
     }

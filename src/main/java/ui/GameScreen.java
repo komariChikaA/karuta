@@ -365,6 +365,7 @@ public class GameScreen {
             @Override
             public void onAwaitingStart() {
                 Platform.runLater(() -> {
+                    Card currentCard = gameEngine.getGameState().getCurrentCard();
                     statusLabel.setText("点击准备开始游戏。");
                     songTitleLabel.setText("等待开始");
                     songMetaLabel.setText("已完成卡牌选择，准备好后开始。");
@@ -382,10 +383,15 @@ public class GameScreen {
             @Override
             public void onRoundStart(Card card) {
                 Platform.runLater(() -> {
-                    cardNameLabel.setText(card.getWorkName());
+                    cardNameLabel.setText(formatCardName(card));
                     songTitleLabel.setText("歌曲片段已就绪");
                     songMetaLabel.setText(buildSongList(card));
                     statusLabel.setText("卡牌已选中，等待播放。");
+                    if (card.isEmptyCard()) {
+                        songTitleLabel.setText("\u8FD9\u662F\u7A7A\u724C");
+                        songMetaLabel.setText("\u7A7A\u724C\u4ECD\u4F1A\u64AD\u653E\u9898\u76EE\u66F2\u76EE\uff0c\u4F46\u4E0D\u4F1A\u8FDB\u5165\u4F11\u606F\u66F2\u5E93\u3002");
+                        statusLabel.setText("\u7A7A\u724C\u5DF2\u51FA\u73B0\uff0c\u672C\u56DE\u5408\u53EA\u80FD\u9009\u62E9\u6210\u529F\u3002");
+                    }
                     updateCardImage(card);
                     prepareButton.setDisable(true);
                     prepareButton.setText("准备下一回合");
@@ -401,12 +407,16 @@ public class GameScreen {
             @Override
             public void onMusicStart(Song song) {
                 Platform.runLater(() -> {
+                    Card currentCard = gameEngine.getGameState().getCurrentCard();
                     songTitleLabel.setText(song.getDisplayName());
                     songMetaLabel.setText(String.format("格式 %s | 文件 %s",
                             song.getFileFormat().toUpperCase(), song.getFileName()));
                     statusLabel.setText("正在播放，可随时结束本回合。");
                     successButton.setDisable(false);
-                    failureButton.setDisable(false);
+                    if (currentCard != null && currentCard.isEmptyCard()) {
+                        statusLabel.setText("\u7A7A\u724C\u66F2\u76EE\u6B63\u5728\u64AD\u653E\uff0c\u672C\u56DE\u5408\u53EA\u80FD\u70B9\u51FB\u6210\u529F\u3002");
+                    }
+                    failureButton.setDisable(currentCard != null && currentCard.isEmptyCard());
                     startPlaybackTimeline();
                 });
             }
@@ -415,8 +425,12 @@ public class GameScreen {
             public void onMusicComplete() {
                 Platform.runLater(() -> {
                     statusLabel.setText("播放完成，请选择成功或失败。");
+                    Card currentCard = gameEngine.getGameState().getCurrentCard();
+                    if (currentCard != null && currentCard.isEmptyCard()) {
+                        statusLabel.setText("\u7A7A\u724C\u66F2\u76EE\u64AD\u653E\u5B8C\u6210\uff0c\u8BF7\u70B9\u51FB\u6210\u529F\u7EE7\u7EED\u3002");
+                    }
                     successButton.setDisable(false);
-                    failureButton.setDisable(false);
+                    failureButton.setDisable(currentCard != null && currentCard.isEmptyCard());
                     playbackProgressBar.setProgress(1.0);
                     stopPlaybackTimeline();
                 });
@@ -601,16 +615,24 @@ public class GameScreen {
 
         int playedRounds = state != null ? state.getCurrentRound() : 0;
         int remainingRounds = state != null ? state.getRemainingRounds() : deck.getActiveCardCount();
+        long activeEmptyCards = deck.getActiveCards().stream().filter(Card::isEmptyCard).count();
         roundLabel.setText(String.format("已进行 %d | 剩余 %d", playedRounds, remainingRounds));
         deckInfoLabel.setText(String.format("%s  |  剩余回合 %d", deck.getDeckName(), remainingRounds));
         queueLabel.setText(String.format("在场卡牌 %d | 离场卡牌 %d",
                 deck.getActiveCardCount(), deck.getInactiveCards().size()));
+        if (activeEmptyCards > 0) {
+            queueLabel.setText(String.format("\u5728\u573A\u5361\u724C %d | \u7A7A\u724C %d | \u79BB\u573A\u5361\u724C %d",
+                    deck.getActiveCardCount(), activeEmptyCards, deck.getInactiveCards().size()));
+        }
     }
 
     /**
      * 构建当前卡牌前几首歌曲标题的简短列表。
      */
     private String buildSongList(Card card) {
+        if (card != null && card.isEmptyCard()) {
+            return "\u7A7A\u724C\u4F1A\u64AD\u653E\u5176\u5173\u8054\u66F2\u76EE\uff0c\u4F46\u4E0D\u8FDB\u5165\u4F11\u606F\u66F2\u5E93\u3002";
+        }
         if (card == null || card.getSongs().isEmpty()) {
             return "该卡牌没有可播放歌曲。";
         }
@@ -618,6 +640,16 @@ public class GameScreen {
                 .limit(4)
                 .map(Song::getDisplayName)
                 .collect(Collectors.joining(" / "));
+    }
+
+    private String formatCardName(Card card) {
+        if (card == null) {
+            return "\u51C6\u5907\u4E2D";
+        }
+        if (card.isEmptyCard()) {
+            return card.getWorkName() + "  [\u7A7A\u724C]";
+        }
+        return card.getWorkName();
     }
 
     /**
